@@ -1,0 +1,19 @@
+encoder_hidden_size : 8
+encoder_output_size : 16
+hidden_layers : [['linear',32]]
+use_gpu : True
+gamma : 0.9
+N_episodes : 10000
+batch_size : 64
+buffer_size : 1000
+net_sync_period : 10
+size : [5,5]
+N_goals : 2
+max_steps : 20
+N_demos : 10
+epsilon_decay : {
+        'period' : 10000,
+        'start' : 1,
+        'stop' : .05,
+        'shape' : 'exponential'
+        }

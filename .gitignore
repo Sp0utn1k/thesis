@@ -1,0 +1,4 @@
+nets/*
+__pycache__
+algorithms/__pycache__/
+runs/

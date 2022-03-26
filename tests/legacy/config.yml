@@ -1,0 +1,27 @@
+size : [10,10]
+visibility : 8
+R50 : 7
+borders_in_obstacles : True
+obstacles : []
+
+players_description : [
+{'pos0':'random','team':'red','replicas':2},
+{'pos0':'random','team':'blue','replicas':2}
+]
+
+# players_description : [
+# 	{'pos0':[0,0],'team':'red'},
+# 	{'pos0':[0,9],'team':'red'},
+# 	{'pos0':[9,0],'team':'blue'},
+# 	{'pos0':[9,9],'team':'blue'}
+# ]
+
+# Agent
+N_aim : 4
+dropout : 0.4
+hidden : [256,128,64]
+
+# Graphics
+add_graphics : True
+im_size : 720
+fps : 5
