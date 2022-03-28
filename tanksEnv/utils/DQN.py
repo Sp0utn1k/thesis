@@ -6,7 +6,7 @@ from collections import namedtuple, deque
 import math
 import copy
 import os
-from utils.functionnal import is_rnn
+from tanksEnv.utils.functionnal import is_rnn
 import time
 
 Episode = namedtuple('Episode',['state','action','reward','next_state','done','all_states','index'])
@@ -73,7 +73,6 @@ class Agent:
 
 	def train_net(self,batch,benchmark=False):
 
-
 		if benchmark:
 			timer = [0,0]
 			timer[0] = time.time()
@@ -83,6 +82,7 @@ class Agent:
 		reward = torch.tensor([episode.reward for episode in batch],device=device)
 		next_state = torch.cat([episode.next_state for episode in batch])
 		done = torch.cuda.BoolTensor([episode.done for episode in batch])
+
 		if self.rnn:
 			if self.max_depth:
 				all_states = [
@@ -91,9 +91,11 @@ class Agent:
 				all_states = [torch.stack(episode.all_states[:episode.index]).squeeze(1) for episode in batch]
 			next_state = next_state.unsqueeze(0)
 			states = all_states
+
 		else:
 			state = torch.cat([episode.state for episode in batch])
 			states = state
+
 
 		if benchmark:
 			t_load = 1000*round(time.time()-timer[1],6)
@@ -105,7 +107,7 @@ class Agent:
 		Qvalues = Qvalues.gather(1, action.unsqueeze(-1)).squeeze(-1)
 		with torch.no_grad():
 			Q_next,_ = self.target_net(next_state,hidden=hidden)
-			Q_next = Q_next.max(1)[0]
+			Q_next = Q_next.max(1).values
 			Q_next[done] = 0.0
 			Q_next = Q_next.detach()
 
@@ -119,6 +121,7 @@ class Agent:
 
 		self.optimizer.zero_grad()
 		loss.backward()
+
 		self.optimizer.step()
 
 		if benchmark:
@@ -159,9 +162,9 @@ class DQNRunner:
 		timer = {'total':0,'train':0}
 		agent = self.agent
 		env = self.env
-		hidden = agent.init_hidden()
 		for episode_id in range(N_episodes):
 			
+			hidden = agent.init_hidden()
 			total_reward = 0.0
 			state = torch.tensor(env.reset(),device=self.device,dtype=torch.float32).unsqueeze(0)
 			done = False

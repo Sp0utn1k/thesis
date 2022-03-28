@@ -3,7 +3,7 @@
 batch_size : 64
 buffer_size : 1000
 n_episodes : 500
-lr : 0.0002
+lr : 0.0005
 
 epsilon_decay: {'period': 500,
 'start': 1,
@@ -11,7 +11,7 @@ epsilon_decay: {'period': 500,
 'shape': 'exponential'}
 
 gamma : .9
-net_sync_period : 2
+net_sync_period : 1
 use_gpu: true
 
 ########## ENVIRONMENT PARAMETERS ##########
@@ -26,9 +26,9 @@ max_cycles: 20
 render: false
 
 ########## AGENT PARAMETERS ##########
-pre_processing_layers: [8]
+pre_processing_layers: []
 post_processing_layers: []
-rnn_size: 16
+rnn_size: 32
 num_layers: 1
-rnn_type: 'gru'
-max_depth: 3
+rnn_type: 'lstm'
+max_depth: 0

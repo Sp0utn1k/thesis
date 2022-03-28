@@ -1,5 +1,5 @@
-from utils.networks.FCNetwork import FCNetwork
-from utils.algorithms.DQN import Agent, DQNRunner 
+from tanksEnv.utils.networks.FCNetwork import FCNetwork
+from tanksEnv.utils.algorithms.DQN import Agent, DQNRunner 
 from tensorboardX import SummaryWriter
 import gym
 
