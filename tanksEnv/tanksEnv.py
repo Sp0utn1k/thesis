@@ -11,6 +11,8 @@ from math import erf, sqrt
 
 class Agent:
 	def __init__(self,team,id=0,policy='user'):
+		team = team.lower()
+		assert team in ['blue','red'], 'Team must be blue or red'
 		self.team = team
 		self.id = id
 		self.policy = policy

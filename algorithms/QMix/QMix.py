@@ -13,7 +13,7 @@ BUFFER_SIZE = 50000
 BATCH_SIZE = 100
 LEARNING_RATE = 1e-4
 N_EPISODES = 200000
-N_demos = 4
+N_DEMOS = 4
 DEMOS_PERIOD = 10000
 GAMMA = .9
 PRINT_PROGRESS_PERIOD = 1000
@@ -169,7 +169,7 @@ class Mixer:
 
 class AgentDQN(nn.Module):
 	def __init__(self,n_inputs,n_outputs,hidden_layers=[],device='cpu',p_dropout=0):
-		super(AgentDQN,self).__init__()
+		super().__init__()
 		net = []
 		layers = [n_inputs] + hidden_layers + [n_outputs]
 		layer_size = n_inputs
@@ -367,7 +367,7 @@ if __name__ == '__main__':
 
 
 		if episode_n % DEMOS_PERIOD == 0:
-			img = make_grid_demos(env,mixer.agents,device=device,repeat=N_demos)
+			img = make_grid_demos(env,mixer.agents,device=device,repeat=N_DEMOS)
 			writer.add_image('image',img,episode_n,dataformats='NHWC')
 
 
@@ -386,5 +386,5 @@ if __name__ == '__main__':
 		for agent in mixer.agents.values():
 			agent.epsilon = 0
 			agent.net.eval()
-		show_demo(env,mixer.agents,device=device,repeat=N_demos)
+		show_demo(env,mixer.agents,device=device,repeat=N_DEMOS)
 	writer.close()
