@@ -62,13 +62,12 @@ class Agent:
 			q_values,_ = self.net(state.to(self.device))
 			self.n_actions = q_values.size(-1)
 		assert(state.shape[0] == 1)
+		with torch.no_grad():
+				Qvalues,next_hidden = self.net(state.to(self.device),hidden=hidden)
 		if random.random() < self.epsilon:
 			action = random.randrange(self.n_actions)
-			next_hidden = hidden
-		else:
-			with torch.no_grad():
-				Qvalues,next_hidden = self.net(state.to(self.device),hidden=hidden)
-				action = Qvalues.cpu().squeeze().argmax().numpy()
+		else:	
+			action = Qvalues.cpu().squeeze().argmax().numpy()
 		return int(action), next_hidden
 
 	def train_net(self,batch,benchmark=False):

@@ -18,7 +18,9 @@ class Agent:
 		self.policy = policy
 
 	def __str__(self):
-		return f'Agent {self.id} ({self.team})'
+		return f'Agent{self.id} ({self.team})'
+	def __repr__(self):
+		return self.__str__()
 
 class Environment:
 
@@ -267,7 +269,7 @@ class Environment:
 	def step(self,action,prompt_action=False):
 		agent = self.current_player
 		self.action(action)
-		self.update_players()
+		self.update_agents()
 		self.cycle[agent] += 1
 		if prompt_action:
 			print(f'Agent {agent.id} takes action "{self.action_names[action]}".')
@@ -286,13 +288,13 @@ class Environment:
 
 	def agent_iter(self):
 		for agent in self.agents:
-			self.update_players()
+			self.update_agents()
 			self.current_player = agent
 			if self.alive[agent]:
 				self.current_player = agent
 				yield agent.id
 
-	def update_players(self):
+	def update_agents(self):
 		self.agents = [p for p in self.agents if self.alive[p]]
 		# np.random.shuffle(self.agents)
 		self.red_players = [p for p in self.agents if p.team=="red"]

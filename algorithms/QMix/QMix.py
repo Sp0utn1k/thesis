@@ -119,7 +119,6 @@ class Mixer:
 	def set_epsilon(self,t):
 		for agent in self.agents.values():
 			agent.set_epsilon(t)
-
 		return self.agents['agent_0'].epsilon
 
 	def get_Q_agents(self,batch):
