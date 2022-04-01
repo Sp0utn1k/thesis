@@ -1,7 +1,7 @@
 import yaml
 from tanksEnv import tanksEnv
 from tanksEnv.utils.networks import FCNetwork
-from tanksEnv.utils.DQN import Agent, DQNRunner 
+from tanksEnv.algorithms.DQN import Agent, DQNRunner 
 from tensorboardX import SummaryWriter
 import time
 

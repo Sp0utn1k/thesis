@@ -1,17 +1,13 @@
-from utils.networks import RNNetwork, DecoderNN
+from tanksEnv.utils.networks import RNNetwork, DecoderNN
+from tanksEnv import tanksEnv
 import torch
 import torch.nn as nn
-import sys
 import random
-import os
 import yaml
 import numpy as np
 import math
 from tensorboardX import SummaryWriter
 import time
-
-sys.path.append(os.path.abspath('../../'))
-from tanksEnv import tanksEnv
 
 class trainerNN(nn.Module):
 	def __init__(self,**kwargs):
@@ -38,8 +34,8 @@ def norm(vect):
 	res = x**2 + y**2
 	return math.sqrt(res)
 
-def sample_tensor(x,sz):
-	return x[torch.randint(0, x.size(0), (sz,))]
+# def sample_tensor(x,sz):
+# 	return x[torch.randint(0, x.size(0), (sz,))]
 
 def generate_batch(env,device='cpu',testing_reduction=1,**settings):
 

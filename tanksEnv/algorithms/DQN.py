@@ -5,7 +5,6 @@ import numpy as np
 from collections import namedtuple, deque
 import math
 import copy
-import os
 from tanksEnv.utils.functionnal import is_rnn
 import time
 
@@ -80,7 +79,7 @@ class Agent:
 		action = torch.tensor([episode.action for episode in batch],device=device)
 		reward = torch.tensor([episode.reward for episode in batch],device=device)
 		next_state = torch.cat([episode.next_state for episode in batch])
-		done = torch.cuda.BoolTensor([episode.done for episode in batch])
+		done = torch.BoolTensor([episode.done for episode in batch])
 
 		if self.rnn:
 			if self.max_depth:
@@ -118,7 +117,7 @@ class Agent:
 			print(f'Compute loss: {t_loss}')
 			timer[1] = time.time()
 
-		self.optimizer.zero_grad()
+		self.optimizer.zero_grad(set_to_none=True)
 		loss.backward()
 
 		self.optimizer.step()
@@ -158,7 +157,7 @@ class DQNRunner:
 
 	def run(self,N_episodes,render=False):
 
-		timer = {'total':0,'train':0}
+		# timer = {'total':0,'train':0}
 		agent = self.agent
 		env = self.env
 		for episode_id in range(N_episodes):

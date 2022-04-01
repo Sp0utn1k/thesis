@@ -1,20 +1,24 @@
   # Encoder:
-input_size : 2
-output_size : 64
-pre_processing_layers : [16,32]
-num_layers : 1
-# post_processing_layers : [256]
-rnn_size: 64
+input_size : 3
+output_size : 10
+pre_processing_layers : [8]
+num_layers : 2
+post_processing_layers : []
+rnn_size: 10
 rnn_type: 'LSTM'
 
   # Decoder:
-decoder_hidden_layers : [64,32]
+decoder_hidden_layers : [16,16]
 
   # Env params:
 size : [10,10]
 N_obstacles : 10
 borders_in_obstacles : True
 visibility : 8
+
+agents_description: [
+{'pos0':'random','team':'blue','replicas':2},
+{'pos0':'random','team':'red', 'replicas':2}]
 
   # Training params:
 batch_size : 1000

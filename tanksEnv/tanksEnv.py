@@ -1,11 +1,9 @@
 import numpy as np
-import math,time,sys,os
+import math,os
 from collections import namedtuple
 import copy
 import pickle
 import os
-import torch
-from torch import nn, optim
 import cv2 as cv
 from math import erf, sqrt
 
@@ -23,9 +21,7 @@ class Agent:
 		return self.__str__()
 
 class Environment:
-
 	def __init__(self,**kwargs):
-
 		if 'players_description' in kwargs.keys():
 			kwargs['agents_desription'] = kwargs['players_descriptions']
 			print('"players_description" deprecated, use "agents_description instead."')
@@ -111,47 +107,52 @@ class Environment:
 		self.cycle = {agent:0 for agent in self.agents}
 		return self.get_state()
 
-	def get_state(self):
+	def get_observation(self):
 
-		assert not self.MA, 'Multi Agent not properly implemented'
-		if not self.MA:
-			agent = self.current_player
-			pos = self.positions[agent]
-			if len(self.blue_players)!=1:
-				print('WARNING: Agent is already dead.')
-				return 
-			foes = [substract(self.positions[p],pos)+[p.id] for p in self.red_players 
-					if self.is_visible(pos,self.positions[p])and pos != self.positions[p]]
-			if not len(foes):
-				foes = [[0,0,-1]]
-			obstacles = [substract(obstacle,pos) for obstacle in self.obstacles if self.is_visible(pos,obstacle)]
-
-			# Create obs
-			obs = copy.copy(pos)
-			aim = self.aim.get(agent,None)
-			if aim == None:
-				aim = -1
-			else:
-				aim = aim.id
-			obs += [aim]
-			for foe in foes:
-				obs += foe
-			return obs
-
-	def current_state(self,agent):
+		# assert not self.MA, 'Multi Agent not properly implemented'
+		# if not self.MA:
+		agent = self.current_player
 		pos = self.positions[agent]
-		ammo = self.ammo[agent]
-		player_obs = pos + [ammo]
-
-		friends = [substract(self.positions[p],pos)+[p.id] for p in self.blue_players 
-			if self.is_visible(pos,self.positions[p]) and pos != self.positions[p]]
+		if len(self.blue_players)!=1:
+			print('WARNING: Agent is already dead.')
+			return 
 		foes = [substract(self.positions[p],pos)+[p.id] for p in self.red_players 
-			if self.is_visible(pos,self.positions[p])and pos != self.positions[p]]
-		if agent.team == 'red':
-			friends,foes = foes,friends
+				if self.is_visible(pos,self.positions[p])and pos != self.positions[p]]
+		if not foes:
+			foes = [[0,0,-1]]
 		obstacles = [substract(obstacle,pos) for obstacle in self.obstacles if self.is_visible(pos,obstacle)]
+		if not obstacles:
+			obstacles = [[0,0]]
 
-		return (player_obs,friends,foes,obstacles)
+		# Create agent_obs
+		agent_obs = copy.copy(pos)
+		aim = self.aim.get(agent,None)
+		if aim == None:
+			aim = -1
+		else:
+			aim = aim.id
+		agent_obs += [aim]
+		
+
+		if self.MA:
+			pass
+
+		return agent_obs, foes, obstacles
+
+	# def current_state(self,agent):
+	# 	pos = self.positions[agent]
+	# 	ammo = self.ammo[agent]
+	# 	player_obs = pos + [ammo]
+
+	# 	friends = [substract(self.positions[p],pos)+[p.id] for p in self.blue_players 
+	# 		if self.is_visible(pos,self.positions[p]) and pos != self.positions[p]]
+	# 	foes = [substract(self.positions[p],pos)+[p.id] for p in self.red_players 
+	# 		if self.is_visible(pos,self.positions[p])and pos != self.positions[p]]
+	# 	if agent.team == 'red':
+	# 		friends,foes = foes,friends
+	# 	obstacles = [substract(obstacle,pos) for obstacle in self.obstacles if self.is_visible(pos,obstacle)]
+
+	# 	return (player_obs,friends,foes,obstacles)
 
 	def get_list_obstacles(self,agent):
 		pos = self.positions[agent]
@@ -360,7 +361,7 @@ class Environment:
 			id = agent.id
 			team = agent.team	
 			pos = self.positions[agent]
-			self.graphics.add_player(id,team,pos)
+			self.graphics.add_agent(id,team,pos)
 		cv.imshow('image',self.graphics.image)
 		cv.waitKey(round(twait))
 		if save_image:				
@@ -380,7 +381,7 @@ class Environment:
 			id = p.id
 			team = p.team
 			pos = self.positions[p]
-			self.graphics.add_player(id,team,pos)
+			self.graphics.add_agent(id,team,pos)
 		for x in range(self.size[0]):
 			for y in range(self.size[1]):
 				if not self.is_visible(self.positions[agent],[x,y]):

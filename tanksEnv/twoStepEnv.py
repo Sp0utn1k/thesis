@@ -5,8 +5,8 @@ class Environment:
 
 	def __init__(self):
 		self.agents = ['agent0','agent1']
-		self.n_actions = 3
-		self.obs_size = 2
+		self.n_actions = 2
+		self.obs_size = 1
 		self.state_size = 2*self.obs_size
 
 	def reset(self):
@@ -18,7 +18,7 @@ class Environment:
 	def get_obs(self,agent):
 		# if self.cycle > 1:
 		# 	return None
-		return np.array([self.cycle,self.state2])
+		return np.array([self.cycle*self.state2-(self.cycle==0)])
 
 	def get_state(self):
 		state = []
@@ -42,8 +42,6 @@ class Environment:
 		return False
 
 	def step(self,action):
-		if action == 2:
-			action = 1
 		if self.is_done(self.current_agent):
 			assert action==None, 'Action must be None when episode is done'
 			return 
@@ -60,12 +58,13 @@ class Environment:
 
 	def reward(self,agent):
 		if -1 in self.coord:
-			return 0
+			reward = 0
 		elif self.state2:
 			matrix = np.array([[0,1],[1,8]])
-			return matrix[tuple(self.coord)]
+			reward =  matrix[tuple(self.coord)]
 		else:
-			return 7
+			reward = 7
+		return reward/2
 
 	def agent_iter(self):
 		done_agents = []
