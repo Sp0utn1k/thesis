@@ -105,7 +105,7 @@ class Environment:
 			self.current_player = self.get_player_by_id(0)
 
 		self.cycle = {agent:0 for agent in self.agents}
-		return self.get_state()
+		return self.get_observation()
 
 	def get_observation(self):
 
@@ -113,9 +113,9 @@ class Environment:
 		# if not self.MA:
 		agent = self.current_player
 		pos = self.positions[agent]
-		if len(self.blue_players)!=1:
-			print('WARNING: Agent is already dead.')
-			return 
+		# if not self.blue_players:
+		# 	print('WARNING: Agent is already dead.')
+		# 	return 
 		foes = [substract(self.positions[p],pos)+[p.id] for p in self.red_players 
 				if self.is_visible(pos,self.positions[p])and pos != self.positions[p]]
 		if not foes:
@@ -132,10 +132,9 @@ class Environment:
 		else:
 			aim = aim.id
 		agent_obs += [aim]
-		
 
-		if self.MA:
-			pass
+		# if self.MA:
+		# 	continue
 
 		return agent_obs, foes, obstacles
 
@@ -260,12 +259,12 @@ class Environment:
 
 	def last(self):
 		
-		S = self.get_state()
+		obs = self.get_observation()
 		R = self.get_reward()
 		done = self.episode_over()
 		info = None
 
-		return S,R,done,info
+		return obs,R,done,info
 
 	def step(self,action,prompt_action=False):
 		agent = self.current_player
@@ -277,12 +276,12 @@ class Environment:
 
 		if not self.MA:
 			R = self.get_reward()
-			S_ = self.get_state()
+			next_obs = self.get_observation()
 			done = self.episode_over()
 			info = None
 		else:
 			return
-		return S_, R, done, info
+		return next_obs, R, done, info
 
 	def get_random_action(self):
 		return np.random.choice(list(self.action_names.keys()))

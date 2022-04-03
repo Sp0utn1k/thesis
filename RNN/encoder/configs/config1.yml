@@ -13,7 +13,7 @@ decoder_hidden_layers : [16,16]
   # Env params:
 size : [10,10]
 N_obstacles : 10
-borders_in_obstacles : True
+borders_in_obstacles : False
 visibility : 8
 
 agents_description: [
