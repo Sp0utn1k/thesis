@@ -11,14 +11,14 @@ rnn_type: 'LSTM'
 decoder_hidden_layers : [16,16]
 
   # Env params:
-size : [10,10]
+size : [50,50]
 N_obstacles : 10
 borders_in_obstacles : False
-visibility : 8
+visibility : 5
 
 agents_description: [
-{'pos0':'random','team':'blue','replicas':2},
-{'pos0':'random','team':'red', 'replicas':2}]
+{'pos0':'random','team':'blue','replicas':4},
+{'pos0':'random','team':'red', 'replicas':4}]
 
   # Training params:
 batch_size : 1000
