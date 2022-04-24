@@ -1,14 +1,14 @@
 import yaml
-import tanksEnv.tanksEnv
+from tanksEnv import tanksEnv
 from tanksEnv.utils.networks import FCNetwork
-from tanksEnv.utils.DQN import Agent, DQNRunner 
+from tanksEnv.algorithms.DQN import Agent, DQNRunner 
 from tensorboardX import SummaryWriter
 import time
 
 if __name__ == "__main__":
 	with open('./configs/dqn_config.yml','r') as file:
 		settings = yaml.safe_load(file)
-
+	
 	env = tanksEnv.Environment(**settings)
 	S = env.reset()
 	obs_size = len(S)

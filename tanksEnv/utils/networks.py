@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence
-from utils.functionnal import build_network,squash_packed
+from tanksEnv.utils.functionnal import build_network,squash_packed
 import time
 
 class RNNetwork(nn.Module):
@@ -71,6 +71,7 @@ class RNNetwork(nn.Module):
 			# output = torch.stack([output[i,indices[i],:] for i in range(output.shape[0])])
 			indices = indices.to(output.device).reshape(-1,1,1).expand(-1,-1,output.shape[2])
 			output = output.gather(1,indices).squeeze(1)
+
 			if benchmark:
 				t = 1000*round(time.time()-timer[1],6)
 				print(f'Stack: {t}')
@@ -82,13 +83,13 @@ class RNNetwork(nn.Module):
 				print(f'Post net: {t}')
 				timer[1] = time.time()
 
-			if self.rnn_type == 'lstm':
-				h,c = hidden
-				h = h.detach()
-				c = c.detach()
-				hidden = h,c
-			else:
-				hidden = hidden.detach()
+			# if self.rnn_type == 'lstm':
+			# 	h,c = hidden
+			# 	h = h.detach()
+			# 	c = c.detach()
+			# 	hidden = h,c
+			# else:
+			# 	hidden = hidden.detach()
 			if benchmark:
 				t_total = 1000*round(time.time()-timer[0],6)
 				print(f'Total: {t_total}\n')
@@ -102,6 +103,26 @@ class RNNetwork(nn.Module):
 		elif self.rnn_type == 'gru':
 			return h
 
+	def freeze_layer(self,layer):
+		relevant_parameters = [i for i,(param_name,_) in enumerate(self.rnn.named_parameters()) if 'l'+str(layer) in param_name]
+		for i,cur_parameter in enumerate(self.rnn.parameters()):
+			if i in relevant_parameters:
+				cur_parameter.requires_grad=False
+
+	def unfreeze_layer(self,layer):
+		relevant_parameters = [i for i,(param_name,_) in enumerate(self.rnn.named_parameters()) if 'l'+str(layer) in param_name]
+		for i,cur_parameter in enumerate(self.rnn.parameters()):
+			if i in relevant_parameters:
+				cur_parameter.requires_grad=True
+
+	def unfreeze_all(self):
+		for cur_parameter in self.rnn.parameters():
+			cur_parameter.requires_grad=True
+
+	def freeze_all_except(self,layer):
+		for i in range(self.rnn.num_layers):
+			if i != layer:
+				self.freeze_layer(i)
 
 class DecoderNN(nn.Module):
 
@@ -141,7 +162,7 @@ class FCNetwork(nn.Module):
 
 		self.pipe = nn.Sequential(*net)
 
-	def forward(self,x,*args):
+	def forward(self,x,*args,**kwargs):
 		return self.pipe(x), None
 
 	def init_hidden(self,*args,**kwargs):

@@ -5,8 +5,7 @@ import numpy as np
 from collections import namedtuple, deque
 import math
 import copy
-import os
-from utils.functionnal import is_rnn
+from tanksEnv.utils.functionnal import is_rnn
 import time
 
 Episode = namedtuple('Episode',['state','action','reward','next_state','done','all_states','index'])
@@ -62,17 +61,15 @@ class Agent:
 			q_values,_ = self.net(state.to(self.device))
 			self.n_actions = q_values.size(-1)
 		assert(state.shape[0] == 1)
+		with torch.no_grad():
+				Qvalues,next_hidden = self.net(state.to(self.device),hidden=hidden)
 		if random.random() < self.epsilon:
 			action = random.randrange(self.n_actions)
-			next_hidden = hidden
-		else:
-			with torch.no_grad():
-				Qvalues,next_hidden = self.net(state.to(self.device),hidden=hidden)
-				action = Qvalues.cpu().squeeze().argmax().numpy()
+		else:	
+			action = Qvalues.cpu().squeeze().argmax().numpy()
 		return int(action), next_hidden
 
 	def train_net(self,batch,benchmark=False):
-
 
 		if benchmark:
 			timer = [0,0]
@@ -82,7 +79,8 @@ class Agent:
 		action = torch.tensor([episode.action for episode in batch],device=device)
 		reward = torch.tensor([episode.reward for episode in batch],device=device)
 		next_state = torch.cat([episode.next_state for episode in batch])
-		done = torch.cuda.BoolTensor([episode.done for episode in batch])
+		done = torch.BoolTensor([episode.done for episode in batch])
+
 		if self.rnn:
 			if self.max_depth:
 				all_states = [
@@ -91,9 +89,11 @@ class Agent:
 				all_states = [torch.stack(episode.all_states[:episode.index]).squeeze(1) for episode in batch]
 			next_state = next_state.unsqueeze(0)
 			states = all_states
+
 		else:
 			state = torch.cat([episode.state for episode in batch])
 			states = state
+
 
 		if benchmark:
 			t_load = 1000*round(time.time()-timer[1],6)
@@ -105,7 +105,7 @@ class Agent:
 		Qvalues = Qvalues.gather(1, action.unsqueeze(-1)).squeeze(-1)
 		with torch.no_grad():
 			Q_next,_ = self.target_net(next_state,hidden=hidden)
-			Q_next = Q_next.max(1)[0]
+			Q_next = Q_next.max(1).values
 			Q_next[done] = 0.0
 			Q_next = Q_next.detach()
 
@@ -117,8 +117,9 @@ class Agent:
 			print(f'Compute loss: {t_loss}')
 			timer[1] = time.time()
 
-		self.optimizer.zero_grad()
+		self.optimizer.zero_grad(set_to_none=True)
 		loss.backward()
+
 		self.optimizer.step()
 
 		if benchmark:
@@ -156,12 +157,12 @@ class DQNRunner:
 
 	def run(self,N_episodes,render=False):
 
-		timer = {'total':0,'train':0}
+		# timer = {'total':0,'train':0}
 		agent = self.agent
 		env = self.env
-		hidden = agent.init_hidden()
 		for episode_id in range(N_episodes):
 			
+			hidden = agent.init_hidden()
 			total_reward = 0.0
 			state = torch.tensor(env.reset(),device=self.device,dtype=torch.float32).unsqueeze(0)
 			done = False

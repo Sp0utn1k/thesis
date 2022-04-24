@@ -1,7 +1,7 @@
 import yaml
-import tanksEnv
-from utils.networks import RNNetwork
-from utils.DQN import Agent, DQNRunner 
+from tanksEnv import tanksEnv
+from tanksEnv.utils.networks import RNNetwork
+from tanksEnv.utils.DQN import Agent, DQNRunner 
 from tensorboardX import SummaryWriter
 import time
 

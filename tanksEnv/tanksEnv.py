@@ -1,27 +1,35 @@
 import numpy as np
-import math,time,sys,os
+import math,os
 from collections import namedtuple
 import copy
 import pickle
 import os
-import torch
-from torch import nn, optim
 import cv2 as cv
-from math import erf
+from math import erf, sqrt
 
-class Player:
+class Agent:
 	def __init__(self,team,id=0,policy='user'):
+		team = team.lower()
+		assert team in ['blue','red'], 'Team must be blue or red'
 		self.team = team
 		self.id = id
 		self.policy = policy
 
+	def __str__(self):
+		return f'Agent{self.id} ({self.team})'
+	def __repr__(self):
+		return self.__str__()
+
 class Environment:
-
 	def __init__(self,**kwargs):
-
-		self.players_description = kwargs.get('players_description',
+		if 'players_description' in kwargs.keys():
+			kwargs['agents_desription'] = kwargs['players_description']
+			print('"players_description" deprecated, use "agents_description instead."')
+			
+		self.agents_description = kwargs.get('agents_description',
 			[{'pos0':'random','team':'blue','replicas':1},
 			{'pos0':'random','team':'red','replicas':1}])
+
 		self.size  = kwargs.get('size',[5,5])
 		self.visibility = kwargs.get('visibility',4)
 		self.R50 = kwargs.get('R50',3)
@@ -38,17 +46,16 @@ class Environment:
 			self.graphics = None
 			self.show_plot = False
 
-		self.MA = sum([(d['team']=='blue')*d.get('replicas',1) for d in self.players_description]) > 1
-		filename = os.path.join(os.getcwd().split('tfe')[-2],'tfe/tanksEnv/los100.pkl')
+		self.MA = sum([(d['team']=='blue')*d.get('replicas',1) for d in self.agents_description]) > 1
+		filename = os.path.join(os.getcwd().split('thesis')[-2],'thesis/tanksEnv/los100.pkl')
 		with open(filename, 'rb') as file:
-		    self.los_dict = pickle.load(file)
-
-		self.reset()
+			self.los_dict = pickle.load(file)
 		self.action_names = create_actions_set(kwargs.get('N_aim',2))
 		self.n_actions = len(self.action_names)
 		self.max_cycles = kwargs.get('max_cycles',-1)
 		self.remember_aim = kwargs.get('remember_aim',True)
 		self.max_ammo = kwargs.get('ammo',-1)
+		self.reset()
 
 	def add_borders_to_obstacles(self):
 		self.obstacles += [[x,-1] for x in range(self.size[0])]
@@ -58,98 +65,102 @@ class Environment:
 		
 	def init_players(self):
 		self.positions = {}
-		players_description = self.players_description
-		self.players = []
-		for d in players_description:
+		agents_description = self.agents_description
+		self.agents = []
+		for d in agents_description:
 			team = d['team']
 			pos0 = d.get('pos0','random')
 			replicas = d.get('replicas',1)
 			policy = d.get('policy','user')
 			assert team in ['blue','red'], 'Team must be red or blue'
 			for _ in range(replicas):
-				player = Player(team,id=len(self.players),policy=policy)
-				self.players += [player]
+				agent = Agent(team,id=len(self.agents),policy=policy)
+				self.agents += [agent]
 			if not pos0 == 'random':
-				assert replicas == 1, 'Cannot replicate player with fixed position'
-				self.positions[player] = pos0
+				assert replicas == 1, 'Cannot replicate agent with fixed position'
+				self.positions[agent] = pos0
 
 	def reset(self):
 		self.init_players()
-		self.red_players = [player for player in self.players if player.team=="red"]
-		self.blue_players = [player for player in self.players if player.team=="blue"]
-		self.ammo = {player:self.max_ammo for player in self.players}
+		self.red_players = [agent for agent in self.agents if agent.team=="red"]
+		self.blue_players = [agent for agent in self.agents if agent.team=="blue"]
+		self.ammo = {agent:self.max_ammo for agent in self.agents}
 		self.alive = {}
 		self.aim = {}
 
-		for player in self.players:
-			self.alive[player] = True
-			self.aim[player] = None
-			if not player in self.positions.keys():
-				self.positions[player] = [np.random.randint(self.size[0]),np.random.randint(self.size[1])]
+		for agent in self.agents:
+			self.alive[agent] = True
+			self.aim[agent] = None
+			if not agent in self.positions.keys():
+				self.positions[agent] = [np.random.randint(self.size[0]),np.random.randint(self.size[1])]
 
-				while (self.positions[player] in self.obstacles or
-					  self.positions[player] in [self.positions[p] for p in self.players 
-					  if p in self.positions.keys() and self.alive[p] and p != player]):	
+				while (self.positions[agent] in self.obstacles or
+					  self.positions[agent] in [self.positions[p] for p in self.agents 
+					  if p in self.positions.keys() and self.alive[p] and p != agent]):	
 					
-					self.positions[player] = [np.random.randint(self.size[0]),np.random.randint(self.size[1])]
+					self.positions[agent] = [np.random.randint(self.size[0]),np.random.randint(self.size[1])]
 
 		if not self.MA:
 			self.current_player = self.blue_players[0]
 		else:
 			self.current_player = self.get_player_by_id(0)
 
-		self.cycle = {player:0 for player in self.players}
-		return self.get_state()
+		self.cycle = {agent:0 for agent in self.agents}
+		return self.get_observation()
 
-	def get_state(self):
+	def get_observation(self):
 
-		assert not self.MA, 'Multi Agent not properly implemented'
-		if not self.MA:
-			player = self.current_player
-			pos = self.positions[player]
-			if len(self.blue_players)!=1:
-				print('WARNING: Agent is already dead.')
-				return 
-			foes = [substract(self.positions[p],pos)+[p.id] for p in self.red_players 
-					if self.is_visible(pos,self.positions[p])and pos != self.positions[p]]
-			# if not len(foes):
-			# 	foes = [[0,0,-1]]
-			obstacles = [substract(obstacle,pos) for obstacle in self.obstacles if self.is_visible(pos,obstacle)]
-
-			# Create obs
-			obs = copy.copy(pos)
-			aim = self.aim.get(player,None)
-			if aim == None:
-				aim = -1
-			else:
-				aim = aim.id
-			obs += [aim]
-			for foe in foes:
-				obs += foe
-			return obs
-
-	def current_state(self,player):
-		pos = self.positions[player]
-		ammo = self.ammo[player]
-		player_obs = pos + [ammo]
-
-		friends = [substract(self.positions[p],pos)+[p.id] for p in self.blue_players 
-			if self.is_visible(pos,self.positions[p]) and pos != self.positions[p]]
+		# assert not self.MA, 'Multi Agent not properly implemented'
+		# if not self.MA:
+		agent = self.current_player
+		pos = self.positions[agent]
+		# if not self.blue_players:
+		# 	print('WARNING: Agent is already dead.')
+		# 	return 
 		foes = [substract(self.positions[p],pos)+[p.id] for p in self.red_players 
-			if self.is_visible(pos,self.positions[p])and pos != self.positions[p]]
-		if player.team == 'red':
-			friends,foes = foes,friends
+				if self.is_visible(pos,self.positions[p])and pos != self.positions[p]]
+		if not foes:
+			foes = [[0,0,-1]]
 		obstacles = [substract(obstacle,pos) for obstacle in self.obstacles if self.is_visible(pos,obstacle)]
+		if not obstacles:
+			obstacles = [[0,0]]
 
-		return (player_obs,friends,foes,obstacles)
+		# Create agent_obs
+		agent_obs = copy.deepcopy(pos)
+		aim = self.aim.get(agent,None)
+		if aim == None:
+			aim = -1
+		else:
+			aim = aim.id
+		agent_obs += [aim]
 
-	def get_list_obstacles(self,player):
-		pos = self.positions[player]
+		# if self.MA:
+		# 	continue
+
+		return agent_obs, foes, obstacles
+
+	# def current_state(self,agent):
+	# 	pos = self.positions[agent]
+	# 	ammo = self.ammo[agent]
+	# 	player_obs = pos + [ammo]
+
+	# 	friends = [substract(self.positions[p],pos)+[p.id] for p in self.blue_players 
+	# 		if self.is_visible(pos,self.positions[p]) and pos != self.positions[p]]
+	# 	foes = [substract(self.positions[p],pos)+[p.id] for p in self.red_players 
+	# 		if self.is_visible(pos,self.positions[p])and pos != self.positions[p]]
+	# 	if agent.team == 'red':
+	# 		friends,foes = foes,friends
+	# 	obstacles = [substract(obstacle,pos) for obstacle in self.obstacles if self.is_visible(pos,obstacle)]
+
+	# 	return (player_obs,friends,foes,obstacles)
+
+	def get_list_obstacles(self,agent):
+		pos = self.positions[agent]
 		obstacles = [substract(obstacle,pos) for obstacle in self.obstacles if self.is_visible(pos,obstacle)]
 		return obstacles
 
-	def next_tile(self,player,act):
-		tile = self.positions[player]
+	def next_tile(self,agent,act):
+		tile = self.positions[agent]
 		x,y = tile
 		assert act in ['north','south','west','east'], "Unauthorized movement"
 		if act =='north':
@@ -172,57 +183,57 @@ class Environment:
 			return False
 		return True
 
-	def is_valid_action(self,player,act):
+	def is_valid_action(self,agent,act):
 		act = self.action_names[act]
 		if act == 'nothing':
 			return True
 		if act in ['north','south','west','east']:
-			return self.is_free(self.next_tile(player,act))
+			return self.is_free(self.next_tile(agent,act))
 		if act == 'shoot':
-			if self.aim[player] in self.players:
-				if not self.amm0[player]:
+			if self.aim[agent] in self.agents:
+				if not self.ammo[agent]:
 					return False
-				if self.aim[player].id not in self.visible_targets_id(player):
+				if self.aim[agent].id not in self.visible_targets_id(agent):
 					if not self.remember_aim:
-						self.aim[player] = None
+						self.aim[agent] = None
 				return True
 		if 'aim' in act:
 			target = int(act[3:])
-			if target in self.visible_targets_id(player):
+			if target in self.visible_targets_id(agent):
 				return True
 		return False
 
 	def action(self,action):
-		player = self.current_player
-		if not self.is_valid_action(player,action):
+		agent = self.current_player
+		if not self.is_valid_action(agent,action):
 			return False
 		act = self.action_names[action]
 		if act in ['north','south','west','east']:
-			self.positions[player] = self.next_tile(player,act)
-			# print(f'Player {player.id} ({player.team}) goes {act}')
+			self.positions[agent] = self.next_tile(agent,act)
+			# print(f'Agent {agent.id} ({agent.team}) goes {act}')
 		if act == 'shoot':
-			is_hit = self.fire(player)
+			is_hit = self.fire(agent)
 
-			# target = self.aim[player]
-			# print(f'Player {player.id} ({player.team}) shots at player {target.id} ({target.team})')
+			# target = self.aim[agent]
+			# print(f'Agent {agent.id} ({agent.team}) shots at agent {target.id} ({target.team})')
 			# if is_hit:
 			# 	print("hit!")
 
 		if 'aim' in act:
 			target_id = int(act[3:])
-			self.aim[player] = self.get_player_by_id(target_id)
+			self.aim[agent] = self.get_player_by_id(target_id)
 			# if self.show_plot:
-			# 	target = self.aim[player]
-			# 	print(f'Player {player.id} ({player.team}) aims at player {target.id} ({target.team})')
+			# 	target = self.aim[agent]
+			# 	print(f'Agent {agent.id} ({agent.team}) aims at agent {target.id} ({target.team})')
 			
 		return True
 
-	def fire(self,player):
-		if not self.ammo[player]:
+	def fire(self,agent):
+		if not self.ammo[agent]:
 			return False
-		self.ammo[player] -= 1
-		target = self.aim[player]
-		distance = norm(self.positions[player],self.positions[target])
+		self.ammo[agent] -= 1
+		target = self.aim[agent]
+		distance = norm(self.positions[agent],self.positions[target])
 		hit = np.random.rand() < self.Phit(distance)
 		if hit:
 			self.alive[target] = False
@@ -231,7 +242,10 @@ class Environment:
 		return False
 	
 	def Phit(self,r):
-		return 1/(1+(r/self.R50).^7.5)
+		coeffs = [2.4316e-01, 2.4187e-05, 3.9214e-07, -9.2819e-10, 9.5338e-13]
+		r = 1.2694e+03*r/self.R50
+		std = sum([r**i*coeffs[i] for i in range(len(coeffs))])
+		return erf(1/std/sqrt(2))
 
 	def get_reward(self):
 		p = self.current_player
@@ -245,43 +259,50 @@ class Environment:
 		return R
 
 	def last(self):
-		S = self.observe_state(self.current_player)
-		R = self.get_reward(self.current_player)
+		
+		obs = self.get_observation()
+		R = self.get_reward()
 		done = self.episode_over()
 		info = None
-		return S_,R,done,info
+
+		return obs,R,done,info
 
 	def step(self,action,prompt_action=False):
-		player = self.current_player
+		agent = self.current_player
 		self.action(action)
-		self.update_players()
-		self.cycle[player] += 1
+		self.update_agents()
+		self.cycle[agent] += 1
 		if prompt_action:
-			print(f'Agent {player.id} takes action "{self.action_names[action]}".')
-		R = self.get_reward()
-		S_ = self.get_state()
-		done = self.episode_over()
-		info = None
-		return S_, R, done, info
+			print(f'Agent {agent.id} takes action "{self.action_names[action]}".')
+
+		if not self.MA:
+			R = self.get_reward()
+			next_obs = self.get_observation()
+			done = self.episode_over()
+			info = None
+		else:
+			return
+		return next_obs, R, done, info
 
 	def get_random_action(self):
 		return np.random.choice(list(self.action_names.keys()))
 
 	def agent_iter(self):
-		for p in self.players:
-			self.update_players()
-			if self.alive[p]:
-				self.current_player = p
-				yield p.id
+		for agent in self.agents:
+			self.update_agents()
+			self.current_player = agent
+			if self.alive[agent]:
+				self.current_player = agent
+				yield agent.id
 
-	def update_players(self):
-		self.players = [p for p in self.players if self.alive[p]]
-		# np.random.shuffle(self.players)
-		self.red_players = [p for p in self.players if p.team=="red"]
-		self.blue_players = [p for p in self.players if p.team=="blue"]
+	def update_agents(self):
+		self.agents = [p for p in self.agents if self.alive[p]]
+		# np.random.shuffle(self.agents)
+		self.red_players = [p for p in self.agents if p.team=="red"]
+		self.blue_players = [p for p in self.agents if p.team=="blue"]
 
 	def get_player_by_id(self,id):
-		return [p for p in self.players if p.id==id][0]
+		return [p for p in self.agents if p.id==id][0]
 
 	def is_visible(self,pos1,pos2):
 		if pos1 == pos2:
@@ -308,7 +329,7 @@ class Environment:
 			
 	def visible_targets_id(self,p1):
 		visibles = []
-		for p2 in self.players:
+		for p2 in self.agents:
 			if p2!=p1 and self.is_visible(self.positions[p1],self.positions[p2]):
 				visibles += [p2.id]
 		return visibles
@@ -323,10 +344,10 @@ class Environment:
 		return winner
 
 	def episode_over(self):
-		player = self.current_player
+		agent = self.current_player
 		done = self.winner() != None
-		done = done or self.cycle[player] == self.max_cycles
-		done = done or not self.alive[player]
+		done = done or self.cycle[agent] == self.max_cycles
+		done = done or not self.alive[agent]
 		return done
 
 	def render(self,twait=1,save_image=False,filename='render.png'):
@@ -336,60 +357,60 @@ class Environment:
 		for [x,y] in self.obstacles:
 			if not (x in [-1,self.size[0]] or y in [-1,self.size[1]]):
 				self.graphics.set_obstacle(x,y)
-		for player in self.players:
-			id = player.id
-			team = player.team	
-			pos = self.positions[player]
-			self.graphics.add_player(id,team,pos)
+		for agent in self.agents:
+			id = agent.id
+			team = agent.team	
+			pos = self.positions[agent]
+			self.graphics.add_agent(id,team,pos)
 		cv.imshow('image',self.graphics.image)
 		cv.waitKey(round(twait))
 		if save_image:				
-			cv2.imwrite(filename, self.graphics.image) 
+			cv.imwrite(filename, self.graphics.image) 
 		# cv.destroyAllWindows()
 
-	def render_fpv(self,player,twait=1,save_image=False,filename='render_fpv.png'):
-		if isinstance(player,int):
-			player = self.get_player_by_id(player)
+	def render_fpv(self,agent,twait=1,save_image=False,filename='render_fpv.png'):
+		if isinstance(agent,int):
+			agent = self.get_player_by_id(agent)
 		if not self.show_plot:
 			return
 		self.graphics.reset()
 		for [x,y] in self.obstacles:
 			if x in range(self.size[0]) and y in range(self.size[1]):
 				self.graphics.set_obstacle(x,y)
-		for p in self.players:
+		for p in self.agents:
 			id = p.id
 			team = p.team
 			pos = self.positions[p]
-			self.graphics.add_player(id,team,pos)
+			self.graphics.add_agent(id,team,pos)
 		for x in range(self.size[0]):
 			for y in range(self.size[1]):
-				if not self.is_visible(self.positions[player],[x,y]):
+				if not self.is_visible(self.positions[agent],[x,y]):
 					self.graphics.delete_pixel(x,y)
-		# for [x,y] in los(self.positions[player],[35,22]):
+		# for [x,y] in los(self.positions[agent],[35,22]):
 		# 	self.graphics.set_red(x,y)
 
 		cv.imshow('image',self.graphics.image)
 		cv.waitKey(round(twait))
 		if save_image:				
-			cv2.imwrite(filename, self.graphics.image) 
+			cv.imwrite(filename, self.graphics.image) 
 
 	@property
 	def N_players(self):
-		return len(self.players)
+		return len(self.agents)
 
 	def los(self,vect1,vect2):
 
-	    if vect2[0] < vect1[0]:
-	        vect1,vect2 = vect2,vect1
+		if vect2[0] < vect1[0]:
+			vect1,vect2 = vect2,vect1
 
-	    diff = [vect2[0]-vect1[0],vect2[1]-vect1[1]]
-	    mirrored = False
-	    if diff[1] < 0:
-	        mirrored = True
-	        diff[1] = -diff[1]
+		diff = [vect2[0]-vect1[0],vect2[1]-vect1[1]]
+		mirrored = False
+		if diff[1] < 0:
+			mirrored = True
+			diff[1] = -diff[1]
 
-	    los = [[i+vect1[0],j*(-1)**mirrored+vect1[1]] for [i,j] in self.los_dict[tuple(diff)]]
-	    return los
+		los = [[i+vect1[0],j*(-1)**mirrored+vect1[1]] for [i,j] in self.los_dict[tuple(diff)]]
+		return los
 	
 class Graphics:
 	def __init__(self,env,**kwargs):
@@ -437,7 +458,7 @@ class Graphics:
 	def delete_pixel(self,x,y):
 		self.assign_value(x,y,[0,0,0])
 
-	def add_player(self,id,team,pos):
+	def add_agent(self,id,team,pos):
 		[x,y] = pos
 		if team=='red':
 			self.set_red(x,y)
