@@ -5,12 +5,13 @@ import math
 import random
 from collections import deque
 from tanksEnv.utils.functionnal import is_rnn
+import time
 
 default = {
 	'unique_net':False,
 	'use_gpu':False,
 	'use_mixer':True,
-	'mixer_hidden_layers':[32],
+	'mixer_hidden_layer':32,
 	'optimizer':'rmsprop',
 	'lr':1e-3,
 	'gamma':0.9,
@@ -82,9 +83,13 @@ class QMixRunner:
 			
 
 			if len(qmix_buffer) >= self.batch_size:
-				buffers = (qmix_buffer,*list(agents_buffers.values()))
+				agents,agents_buffers_list = zip(*list(agents_buffers.items()))
+				buffers = (qmix_buffer,*agents_buffers_list)
 				batches = list(zip(*random.sample(list(zip(*buffers)),self.batch_size)))
-				batches = (batches[0],batches[1:])
+				qmix_batch = batches[0]
+				agents_batch = batches[1:]
+				agents_batch = dict(zip(agents, agents_batch))
+				batches = (qmix_batch,agents_batch)
 				loss = self.qmix.learn(batches)
 
 			yield episode_id,episode_length,total_reward,loss
@@ -99,10 +104,11 @@ class QMix:
 		self.state_size = env.state_size
 
 		if kwargs.get('use_mixer',default['use_mixer']):
-			mixer_hidden = kwargs.get('mixer_hidden_layers',default['mixer_hidden_layers'])
-			self.mixer = Mixer(env.state_size,len(agent_names),hidden_layers=mixer_hidden).to(self.device)
+			mixer_hidden = kwargs.get('mixer_hidden_layer',default['mixer_hidden_layer'])
+			self.mixer = Mixer(env.state_size,len(agent_names),hidden_layer_size=mixer_hidden).to(self.device)
 		else:
 			self.mixer = VDNMixer()
+
 
 		self.target_mixer = copy.deepcopy(self.mixer)
 		self.target_mixer.eval()
@@ -127,8 +133,9 @@ class QMix:
 		parameters = []
 		for net in self.agents.values():
 			parameters += list(net.parameters())
+			if unique_net:
+				break
 		parameters += list(self.mixer.parameters())
-		parameters = list(set(parameters))
 
 		optim = kwargs.get('optimizer',default['optimizer']).lower()
 		lr = kwargs.get('lr',default['lr'])
@@ -139,6 +146,8 @@ class QMix:
 			self.optimizer = torch.optim.SGD(parameters,lr=lr)
 		elif optim == 'rmsprop':
 			self.optimizer = torch.optim.RMSprop(parameters, lr=lr)
+		else:
+			print('Unknown optimizer')
 
 		self.gamma = kwargs.get('gamma',default['gamma'])
 		self.loss_fn = kwargs.get('loss_function',default['loss_function'])()
@@ -165,7 +174,13 @@ class QMix:
 		next_states = torch.cat([trans.next_state for trans in qmix_batch])
 		dones = torch.BoolTensor([trans.done for trans in qmix_batch])
 		rewards = torch.tensor([trans.reward for trans in qmix_batch],device=self.device,dtype=torch.float32)
-		actions = torch.tensor([[trans.action for trans in batch] for batch in agents_batch],device=self.device).transpose(0,1).unsqueeze(-1)
+		actions = torch.tensor([[trans.action for trans in batch] for batch in agents_batch.values()],device=self.device).transpose(0,1).unsqueeze(-1)
+
+		# print(states[0,:])
+		# print(agents_batch['agent0'][0].obs)
+		# print(agents_batch['agent1'][0].obs)
+		# print('\n')
+		# time.sleep(1)
 
 		Qagents,hiddens = self.get_Q_agents(agents_batch)
 		Qagents = Qagents.gather(2,actions).squeeze(-1)
@@ -179,7 +194,7 @@ class QMix:
 			Qtarget = rewards+self.gamma*Qtarget
 
 		loss = self.loss_fn(Qvalues,Qtarget)
-		self.optimizer.zero_grad(set_to_none=True) 
+		self.optimizer.zero_grad() 
 		loss.backward()
 		self.optimizer.step()
 
@@ -206,15 +221,15 @@ class QMix:
 	def get_Q_agents(self,batch):
 		Qagents = []
 		hiddens_out = self.init_hidden()
-		for idx,(agent,net) in enumerate(self.agents.items()):
+		for agent,net in self.agents.items():
 			if self.rnn:
 				if self.max_depth:
 					obs = [
-					torch.stack(trans.all_obs[max(0,trans.index-self.max_depth):trans.index]).squeeze(1) for trans in batch[idx]]
+					torch.stack(trans.all_obs[max(0,trans.index-self.max_depth):trans.index]).squeeze(1) for trans in batch[agent]]
 				else:
-					obs = [torch.stack(trans.all_obs[:trans.index]).squeeze(1) for trans in batch[idx]]
+					obs = [torch.stack(trans.all_obs[:trans.index]).squeeze(1) for trans in batch[agent]]
 			else:
-				obs =  torch.cat([trans.obs for trans in batch[idx]])
+				obs =  torch.cat([trans.obs for trans in batch[agent]])
 			Q,hidden = net(obs)
 			hiddens_out[agent] = hidden
 			Qagents += [Q.unsqueeze(1)]
@@ -224,8 +239,8 @@ class QMix:
 	def get_Q_target_agents(self,batch,hiddens=None):
 		hiddens_in=hiddens
 		Qagents = []
-		for idx,(agent,net) in enumerate(self.agents.items()):
-			next_obs =  torch.cat([trans.next_obs for trans in batch[idx]])
+		for agent,net in self.target_agents.items():
+			next_obs =  torch.cat([trans.next_obs for trans in batch[agent]])
 			if self.rnn:
 				next_obs = next_obs.unsqueeze(0)
 			Q, _ = net(next_obs,hidden=hiddens_in[agent])
@@ -255,58 +270,67 @@ class QMix:
 
 
 class Mixer(nn.Module):
-	def __init__(self,state_space,n_agents,hidden_layers=[32]):
+	def __init__(self,state_space,n_agents,hidden_layer_size=32):
 		super().__init__()
 		self.n_agents = n_agents
 
-		self.layers = []
-		self.hidden_layers = [n_agents] + hidden_layers + [1]
-		prev_hidden = self.hidden_layers[0]
-		for next_hidden in self.hidden_layers[1:]:
-			W = nn.Linear(state_space,prev_hidden*next_hidden)
-			B = nn.Linear(state_space,next_hidden)
-			self.layers.append((W,B))
-			prev_hidden = next_hidden
+		# self.layers = []
+		# self.layers_size = [n_agents] + hidden_layers + [1]
+		# prev_hidden = self.layers_size[0]
+		# for next_hidden in self.layers_size[1:-1]:
+		# 	W = nn.Linear(state_space,prev_hidden*next_hidden)
+		# 	B = nn.Linear(state_space,next_hidden)
+		# 	self.layers.append((W,B))
+		# 	prev_hidden = next_hidden
 
+		# B_last = nn.Sequential(
+		# 			nn.Linear(state_space,state_space),
+		# 			nn.ReLU(),
+		# 			nn.Linear(state_space,1))
+		# W_last = nn.Linear(state_space,hidden_layers[-1])
 
+		# self.layers.append((W_last,B_last))
 
-		B_last = nn.Sequential(
+		self.hidden_size = hidden_layer_size
+		self.W1 = nn.Linear(state_space,n_agents*hidden_layer_size)
+		self.B1 = nn.Linear(state_space,hidden_layer_size)
+		self.W2 = nn.Linear(state_space,hidden_layer_size)
+		self.B2 = nn.Sequential(
 					nn.Linear(state_space,state_space),
 					nn.ReLU(),
 					nn.Linear(state_space,1))
-		W_last = self.layers[-1][0]
-		self.layers[-1] = (W_last,B_last)
+		
 		self.ELU = nn.ELU()
 
 	def forward(self,Qagents,state):
 
-		Qtot = Qagents.unsqueeze(1)
-		prev_hidden = self.hidden_layers[0]
-		for idx in range(len(self.layers)):
-			next_hidden = self.hidden_layers[idx+1]
-			W,B = self.layers[idx]
-			w = torch.abs(W(state)).reshape((-1,prev_hidden,next_hidden))
-			b = B(state).reshape((-1,1,next_hidden))
-			if idx:
-				Qtot = self.ELU(Qtot)
-			Qtot = torch.add(torch.bmm(Qtot,w),b)
-			prev_hidden = next_hidden
+		# Qtot = Qagents.unsqueeze(1)
+		# prev_hidden = self.layers_size[0]
+		# for idx in range(len(self.layers)):
+		# 	next_hidden = self.layers_size[idx+1]
+		# 	W,B = self.layers[idx]
+		# 	w = torch.abs(W(state)).reshape((-1,prev_hidden,next_hidden))
+		# 	b = B(state).reshape((-1,1,next_hidden))
+		# 	if idx:
+		# 		Qtot = self.ELU(Qtot)
+		# 	Qtot = torch.add(torch.bmm(Qtot,w),b)
+		# 	prev_hidden = next_hidden
 
-		# w1 = torch.abs(self.W1(state)).reshape((-1,self.n_agents,self.hidden_size))
-		# b1 = self.B1(state).reshape((-1,1,self.hidden_size))
-		# Qtot = self.ELU(torch.add(torch.bmm(Qagents.unsqueeze(1),w1),b1))
+		w1 = torch.abs(self.W1(state)).reshape((-1,self.n_agents,self.hidden_size))
+		b1 = self.B1(state).reshape((-1,1,self.hidden_size))
+		Qtot = self.ELU(torch.add(torch.bmm(Qagents.unsqueeze(1),w1),b1))
 
-		# w2 = torch.abs(self.W2(state)).reshape((-1,self.hidden_size,1))
-		# b2 = self.B2(state).reshape((-1,1,1))
-		# Qtot = torch.add(torch.bmm(Qtot,w2),b2).reshape(-1)
+		w2 = torch.abs(self.W2(state)).reshape((-1,self.hidden_size,1))
+		b2 = self.B2(state).reshape((-1,1,1))
+		Qtot = torch.add(torch.bmm(Qtot,w2),b2).reshape(-1)
 
 		return Qtot.flatten()
 
-	def to(self,device):
-		for W,B in self.layers:
-			W = W.to(device)
-			B = B.to(device)
-		return self
+	# def to(self,device):
+	# 	for W,B in self.layers:
+	# 		W = W.to(device)
+	# 		B = B.to(device)
+	# 	return self
 
 
 class VDNMixer(nn.Module):

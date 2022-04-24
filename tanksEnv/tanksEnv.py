@@ -23,12 +23,13 @@ class Agent:
 class Environment:
 	def __init__(self,**kwargs):
 		if 'players_description' in kwargs.keys():
-			kwargs['agents_desription'] = kwargs['players_descriptions']
+			kwargs['agents_desription'] = kwargs['players_description']
 			print('"players_description" deprecated, use "agents_description instead."')
 			
 		self.agents_description = kwargs.get('agents_description',
 			[{'pos0':'random','team':'blue','replicas':1},
 			{'pos0':'random','team':'red','replicas':1}])
+
 		self.size  = kwargs.get('size',[5,5])
 		self.visibility = kwargs.get('visibility',4)
 		self.R50 = kwargs.get('R50',3)
@@ -125,7 +126,7 @@ class Environment:
 			obstacles = [[0,0]]
 
 		# Create agent_obs
-		agent_obs = copy.copy(pos)
+		agent_obs = copy.deepcopy(pos)
 		aim = self.aim.get(agent,None)
 		if aim == None:
 			aim = -1

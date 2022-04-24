@@ -81,7 +81,6 @@ def generate_batch(env,device='cpu',testing_reduction=1,**settings):
 def add(v1,v2):
 	return [v1[i]+v2[i] for i in range(len(v1))]
 
-
 def train(config_id=1,write_result=False):
 
 	with open(f'configs/config{config_id}.yml','r') as file:

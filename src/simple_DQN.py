@@ -8,7 +8,7 @@ import time
 if __name__ == "__main__":
 	with open('./configs/dqn_config.yml','r') as file:
 		settings = yaml.safe_load(file)
-
+	
 	env = tanksEnv.Environment(**settings)
 	S = env.reset()
 	obs_size = len(S)

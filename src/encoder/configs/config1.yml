@@ -1,0 +1,23 @@
+  # Encoder:
+input_size : 3
+output_size : 12
+pre_processing_layers : [8]
+num_layers : 4
+post_processing_layers : []
+rnn_size: 10
+rnn_type: 'LSTM'
+
+  # Decoder:
+decoder_hidden_layers : [16,16]
+
+  # Env params:
+visibility : 20
+max_foes : 4
+max_id : 10
+
+  # Training params:
+batch_size : 1
+epochs : 1000
+use_gpu : True
+load_model : False
+save_model : True
