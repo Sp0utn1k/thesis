@@ -2,9 +2,12 @@ from tanksEnv.utils.networks import RNNetwork, DecoderNN
 from tanksEnv import tanksEnv
 import yaml
 import math
-import torch
 import random
+import copy
+import torch
 from torch import nn,optim
+from tensorboardX import SummaryWriter
+
 
 def generate_dummy_foe(vis_grid,idx=0):
 
@@ -39,13 +42,16 @@ def generate_sample(vis_grid,max_length,max_id,device='cpu'):
     for _ in range(length):
         foe = generate_dummy_foe(vis_grid,idx=list(range(max_id+1)))
         observation.append(foe)
-        positions.append(foe[:2])
+        pos = foe[:2]
+        if pos in positions:
+            return generate_sample(vis_grid,max_length,max_id,device=device)
+        positions.append(pos)
     observation = torch.tensor(observation,dtype=torch.float32,device=device)
 
 
     positive = random.choice(observation)
     empty_tiles = [pos for pos in vis_grid if pos not in positions]
-    negative = random.choice(empty_tiles)
+    negative = copy.deepcopy(random.choice(empty_tiles))
     negative.append(random.randrange(max_id+1))
     negative = torch.tensor(negative,dtype=torch.float32,device=device)
 
@@ -60,24 +66,77 @@ def generate_batch(vis_grid,max_length,max_id,batch_size,device='cpu'):
         observations.append(observation)
         positives.append(positive)
         negatives.append(negative)
-    positives = torch.cat(positives)
-    negatives = torch.cat(negatives)
+    positives = torch.stack(positives)
+    negatives = torch.stack(negatives)
     return observations, positives, negatives
 
 if __name__ == '__main__':
     with open(f'configs/config1.yml','r') as file:
         config = yaml.safe_load(file)
 
+    device = torch.device("cuda" if torch.cuda.is_available() and config.get('use_gpu',False) else "cpu")
+    print(f'Device: {device}')
     visibility = config['visibility']
     max_id = config['max_id']
     max_foes = config['max_foes']
     batch_size = config['batch_size']
+    epochs = config['epochs']
+    use_writer = config.get('use_writer',False)
+    freeze_period = config['freeze_period']
+    num_layers = config['num_layers']
+    start_freezing = config['start_freezing']
+
+    obs_length = 3
+    frozen_layer = 0
 
     vis_grid = generate_vis_grid(visibility)
+    encoder = RNNetwork(**config).to(device)
+    decoder = DecoderNN(config['output_size']+obs_length,hidden_layers=config['decoder_hidden_layers']).to(device)
+    loss_f = nn.BCEWithLogitsLoss()
+    optimizer = optim.Adam(list(encoder.parameters())+list(decoder.parameters()),lr=0.003)
+    if use_writer:
+        writer = SummaryWriter()
 
-    encoder = RNNetwork(**config)
-    observations,positives,negatives = generate_batch(vis_grid,max_foes,max_id,batch_size)
-    print(observations)
-    output,_ = encoder(observations)
-    print(output)
+    for epoch in range(epochs):
+
+        if epoch % freeze_period == 0 and epoch > start_freezing:
+            encoder.unfreeze_all()
+            frozen_layer += 1
+            frozen_layer = frozen_layer % num_layers
+            encoder.freeze_all_except(frozen_layer)
+
+        observations,positives,negatives = generate_batch(vis_grid,max_foes,max_id,batch_size,device=device)
+        output,_ = encoder(observations)
+        pos_pred = decoder(output,positives)
+        neg_pred = decoder(output,negatives)
+        pos_labels = torch.ones_like(pos_pred)
+        neg_labels = torch.zeros_like(neg_pred)
+        pred = torch.cat([pos_pred,neg_pred])
+        labels = torch.cat([pos_labels,neg_labels])
+
+        optimizer.zero_grad()
+        loss = loss_f(pred,labels)
+        loss.backward()
+        optimizer.step()
+
+        if use_writer:
+            pos_pred = decoder.predict(output,positives)
+            neg_pred = decoder.predict(output,negatives)
+            true_pos = sum(pos_pred).detach().cpu().numpy()[0]
+            false_neg = batch_size - true_pos
+            false_pos = sum(neg_pred).detach().cpu().numpy()[0]
+            true_neg = batch_size - false_pos
+
+            accuracy = (true_pos+true_neg)/(2*batch_size)
+            recall = true_pos/(true_pos+false_neg)
+
+            writer.add_scalar('Loss',loss.item(),epoch)
+            writer.add_scalar('Accuracy',accuracy,epoch)
+            writer.add_scalar('Recall',recall,epoch)
+
+
+    if use_writer:
+        writer.close()
+
+    rnn1 = nn.LSTM(input_size=10, hidden_size=5, num_layers=3)
     

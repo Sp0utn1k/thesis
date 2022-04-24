@@ -103,6 +103,26 @@ class RNNetwork(nn.Module):
 		elif self.rnn_type == 'gru':
 			return h
 
+	def freeze_layer(self,layer):
+		relevant_parameters = [i for i,(param_name,_) in enumerate(self.rnn.named_parameters()) if 'l'+str(layer) in param_name]
+		for i,cur_parameter in enumerate(self.rnn.parameters()):
+			if i in relevant_parameters:
+				cur_parameter.requires_grad=False
+
+	def unfreeze_layer(self,layer):
+		relevant_parameters = [i for i,(param_name,_) in enumerate(self.rnn.named_parameters()) if 'l'+str(layer) in param_name]
+		for i,cur_parameter in enumerate(self.rnn.parameters()):
+			if i in relevant_parameters:
+				cur_parameter.requires_grad=True
+
+	def unfreeze_all(self):
+		for cur_parameter in self.rnn.parameters():
+			cur_parameter.requires_grad=True
+
+	def freeze_all_except(self,layer):
+		for i in range(self.rnn.num_layers):
+			if i != layer:
+				self.freeze_layer(i)
 
 class DecoderNN(nn.Module):
 
