@@ -8,7 +8,7 @@ rnn_size: 20
 rnn_type: 'LSTM'
 
   # Decoder:
-decoder_hidden_layers : [20]
+decoder_hidden_layers : [40]
 
   # Env params:
 visibility : 20
@@ -16,11 +16,13 @@ max_foes : 4
 max_id : 10
 
   # Training params:
+learning_rate : 0.001
 batch_size : 128
-epochs : 100000
+epochs : 200000
 use_gpu : True
 use_writer : True
 load_model : False
 save_model : True
-start_freezing : 1000000
+save_period : 1000
+start_freezing : 100000000
 freeze_period : 100

@@ -74,6 +74,8 @@ if __name__ == '__main__':
     with open(f'configs/config1.yml','r') as file:
         config = yaml.safe_load(file)
 
+
+    netfile = 'nets/config1/'
     device = torch.device("cuda" if torch.cuda.is_available() and config.get('use_gpu',False) else "cpu")
     print(f'Device: {device}')
     visibility = config['visibility']
@@ -85,6 +87,9 @@ if __name__ == '__main__':
     freeze_period = config['freeze_period']
     num_layers = config['num_layers']
     start_freezing = config['start_freezing']
+    learning_rate = config['learning_rate']
+    save_model = config['save_model']
+    save_period = config['save_period']
 
     obs_length = 3
     frozen_layer = 0
@@ -93,7 +98,7 @@ if __name__ == '__main__':
     encoder = RNNetwork(**config).to(device)
     decoder = DecoderNN(config['output_size']+obs_length,hidden_layers=config['decoder_hidden_layers']).to(device)
     loss_f = nn.BCEWithLogitsLoss()
-    optimizer = optim.Adam(list(encoder.parameters())+list(decoder.parameters()),lr=0.003)
+    optimizer = optim.Adam(list(encoder.parameters())+list(decoder.parameters()),lr=learning_rate)
     if use_writer:
         writer = SummaryWriter()
 
@@ -133,6 +138,10 @@ if __name__ == '__main__':
             writer.add_scalar('Loss',loss.item(),epoch)
             writer.add_scalar('Accuracy',accuracy,epoch)
             writer.add_scalar('Recall',recall,epoch)
+
+        if save_model and epoch % save_period == 0:
+            torch.save(encoder,netfile+'encoder.pk')
+
 
 
     if use_writer:
