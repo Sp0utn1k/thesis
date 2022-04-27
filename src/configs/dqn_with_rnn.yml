@@ -16,7 +16,7 @@ use_gpu: true
 
 ########## ENVIRONMENT PARAMETERS ##########
 size : [10,10]
-players_description : [
+agents_description : [
 {'pos0':[0,0],'team': 'blue'},
 {'pos0': [9,9],'team': 'red','policy': null}
 ] 
@@ -24,6 +24,7 @@ visibility: 10
 R50: 10
 max_cycles: 20
 render: false
+use_encoder: false
 
 ########## AGENT PARAMETERS ##########
 pre_processing_layers: []

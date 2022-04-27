@@ -1,5 +1,4 @@
 from tanksEnv.utils.networks import RNNetwork, DecoderNN
-from tanksEnv import tanksEnv
 import yaml
 import math
 import random
@@ -7,7 +6,6 @@ import copy
 import torch
 from torch import nn,optim
 from tensorboardX import SummaryWriter
-
 
 def generate_dummy_foe(vis_grid,idx=0):
 
@@ -38,7 +36,7 @@ def generate_vis_grid(size):
 def generate_sample(vis_grid,max_length,max_id,device='cpu'):
     observation = []
     positions = []
-    length = random.randrange(max_length) + 1
+    length = random.randrange(max_length+1)
     for _ in range(length):
         foe = generate_dummy_foe(vis_grid,idx=list(range(max_id+1)))
         observation.append(foe)
@@ -46,38 +44,57 @@ def generate_sample(vis_grid,max_length,max_id,device='cpu'):
         if pos in positions:
             return generate_sample(vis_grid,max_length,max_id,device=device)
         positions.append(pos)
-    observation = torch.tensor(observation,dtype=torch.float32,device=device)
 
-
-    positive = random.choice(observation)
     empty_tiles = [pos for pos in vis_grid if pos not in positions]
+
+    if length == 0:
+        observation.append([0,0,-1])
+        
+        positive = copy.deepcopy(random.choice(empty_tiles))
+        positive.append(random.randrange(max_id+1))
+        no_agent = True
+    else:
+        positive = copy.deepcopy(random.choice(observation))
+        no_agent = False
+
+    positive = torch.tensor(positive,dtype=torch.float32,device=device)
+
+    observation = torch.tensor(observation,dtype=torch.float32,device=device)
     negative = copy.deepcopy(random.choice(empty_tiles))
     negative.append(random.randrange(max_id+1))
     negative = torch.tensor(negative,dtype=torch.float32,device=device)
 
-    return observation,positive,negative
+    return observation,positive,negative,no_agent
 
 def generate_batch(vis_grid,max_length,max_id,batch_size,device='cpu'):
     observations = []
     positives = []
     negatives = []
+    no_agents_mask = []
     for _ in range(batch_size):
-        observation,positive,negative = generate_sample(vis_grid,max_length,max_id,device=device)
+        observation,positive,negative,no_agent = generate_sample(vis_grid,max_length,max_id,device=device)
         observations.append(observation)
         positives.append(positive)
         negatives.append(negative)
+        no_agents_mask.append(no_agent)
+
     positives = torch.stack(positives)
     negatives = torch.stack(negatives)
-    return observations, positives, negatives
+    no_agents_mask = torch.BoolTensor(no_agents_mask)
+    return observations, positives, negatives, no_agents_mask
 
 if __name__ == '__main__':
-    with open(f'configs/config1.yml','r') as file:
+
+    config_id = 'config2'
+    print(f'Config: {config_id}.yml')
+    with open(f'configs/{config_id}.yml','r') as file:
         config = yaml.safe_load(file)
 
 
-    netfile = 'nets/config1/'
+    netfile = f'nets/{config_id}/'
     device = torch.device("cuda" if torch.cuda.is_available() and config.get('use_gpu',False) else "cpu")
     print(f'Device: {device}')
+
     visibility = config['visibility']
     max_id = config['max_id']
     max_foes = config['max_foes']
@@ -89,14 +106,23 @@ if __name__ == '__main__':
     start_freezing = config['start_freezing']
     learning_rate = config['learning_rate']
     save_model = config['save_model']
+    load_model = config['load_model']
     save_period = config['save_period']
 
     obs_length = 3
     frozen_layer = 0
 
+    if load_model:
+        encoder = torch.load(netfile+'encoder.pk').to(device)
+        decoder = torch.load(netfile+'decoder.pk').to(device)
+    else:
+        encoder = RNNetwork(**config).to(device)
+        decoder = DecoderNN(config['output_size']+obs_length,hidden_layers=config['decoder_hidden_layers']).to(device)
+
+    if not load_model and save_model:
+        input(f'A new model will be created and saved in {netfile}.\nPress enter to continue.')
+    
     vis_grid = generate_vis_grid(visibility)
-    encoder = RNNetwork(**config).to(device)
-    decoder = DecoderNN(config['output_size']+obs_length,hidden_layers=config['decoder_hidden_layers']).to(device)
     loss_f = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(list(encoder.parameters())+list(decoder.parameters()),lr=learning_rate)
     if use_writer:
@@ -110,11 +136,12 @@ if __name__ == '__main__':
             frozen_layer = frozen_layer % num_layers
             encoder.freeze_all_except(frozen_layer)
 
-        observations,positives,negatives = generate_batch(vis_grid,max_foes,max_id,batch_size,device=device)
+        observations,positives,negatives,no_agents_mask = generate_batch(vis_grid,max_foes,max_id,batch_size,device=device)
         output,_ = encoder(observations)
         pos_pred = decoder(output,positives)
         neg_pred = decoder(output,negatives)
         pos_labels = torch.ones_like(pos_pred)
+        pos_labels[no_agents_mask] = 0
         neg_labels = torch.zeros_like(neg_pred)
         pred = torch.cat([pos_pred,neg_pred])
         labels = torch.cat([pos_labels,neg_labels])
@@ -125,12 +152,15 @@ if __name__ == '__main__':
         optimizer.step()
 
         if use_writer:
-            pos_pred = decoder.predict(output,positives)
-            neg_pred = decoder.predict(output,negatives)
-            true_pos = sum(pos_pred).detach().cpu().numpy()[0]
-            false_neg = batch_size - true_pos
-            false_pos = sum(neg_pred).detach().cpu().numpy()[0]
-            true_neg = batch_size - false_pos
+            pos_pred = list(decoder.predict(output,positives).detach().cpu().flatten().numpy())
+            neg_pred = list(decoder.predict(output,negatives).detach().cpu().flatten().numpy())
+            pred = pos_pred+neg_pred
+            labels  = list(labels.detach().cpu().flatten().numpy())
+
+            true_pos = sum(map(lambda x: x[0] and x[1],zip(pred,labels)))
+            false_pos = sum(map(lambda x: x[0] and not x[1],zip(pred,labels)))
+            true_neg = sum(map(lambda x: not x[0] and not x[1],zip(pred,labels)))
+            false_neg = sum(map(lambda x: not x[0] and x[1],zip(pred,labels)))
 
             accuracy = (true_pos+true_neg)/(2*batch_size)
             recall = true_pos/(true_pos+false_neg)
@@ -140,7 +170,8 @@ if __name__ == '__main__':
             writer.add_scalar('Recall',recall,epoch)
 
         if save_model and epoch % save_period == 0:
-            torch.save(encoder,netfile+'encoder.pk')
+            torch.save(encoder.to('cpu'),netfile+'encoder.pk')
+            torch.save(decoder.to('cpu'),netfile+'decoder.pk')
 
 
 

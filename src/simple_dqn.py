@@ -6,7 +6,7 @@ from tensorboardX import SummaryWriter
 import time
 
 if __name__ == "__main__":
-	with open('./configs/dqn_config.yml','r') as file:
+	with open('./configs/simple_dqn.yml','r') as file:
 		settings = yaml.safe_load(file)
 	
 	env = tanksEnv.Environment(**settings)

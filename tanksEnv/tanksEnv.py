@@ -7,6 +7,24 @@ import os
 import cv2 as cv
 from math import erf, sqrt
 
+
+
+default = {'agents_description':[{'pos0':[0,0],'team': 'blue'},
+								{'pos0': [9,9],'team': 'red','policy': None}],
+			'size':[5,5],
+			'visibility':4,
+			'R50':3,
+			'obstacles':[],
+			'borders_in_obstacles':True,
+			'add_graphics':True,
+			'N_aim':2,
+			'fps':5,
+			'max_cycles':-1,
+			'remember_aim':True,
+			'ammo':-1,
+			'im_size':480,
+			'use_encoder':True
+			}
 class Agent:
 	def __init__(self,team,id=0,policy='user'):
 		team = team.lower()
@@ -22,39 +40,48 @@ class Agent:
 
 class Environment:
 	def __init__(self,**kwargs):
+
 		if 'players_description' in kwargs.keys():
 			kwargs['agents_desription'] = kwargs['players_description']
 			print('"players_description" deprecated, use "agents_description instead."')
+
+		# for param in kwargs.keys():
+		# 	if param not in default.keys():
+		# 		raise NameError(f'Unknown parameter \'{param}\'.')
 			
-		self.agents_description = kwargs.get('agents_description',
-			[{'pos0':'random','team':'blue','replicas':1},
-			{'pos0':'random','team':'red','replicas':1}])
+		self.use_encoder = kwargs.get('use_encoder',default['use_encoder'])
+		self.agents_description = kwargs.get('agents_description',default['agents_description'])
 
-		self.size  = kwargs.get('size',[5,5])
-		self.visibility = kwargs.get('visibility',4)
-		self.R50 = kwargs.get('R50',3)
+		self.size  = kwargs.get('size',default['size'])
+		self.visibility = kwargs.get('visibility',default['visibility'])
+		self.R50 = kwargs.get('R50',default['R50'])
 
-		self.obstacles = kwargs.get('obstacles',[])
-		if kwargs.get('borders_in_obstacles',False):
+		self.obstacles = kwargs.get('obstacles',default['obstacles'])
+		if not self.use_encoder:
+			assert self.obstacles == [], 'Using obstacles in no_encoder mode is not supported.'
+		if kwargs.get('borders_in_obstacles',default['borders_in_obstacles']):
 			self.add_borders_to_obstacles()
 
-		if kwargs.get('add_graphics',True):
+		if kwargs.get('add_graphics',default['add_graphics']):
 			self.graphics = Graphics(self,**kwargs)
 			self.show_plot = True
-			self.twait = 1000.0/kwargs.get('fps',5)
+			self.twait = 1000.0/kwargs.get('fps',default['fps'])
 		else:
 			self.graphics = None
 			self.show_plot = False
 
 		self.MA = sum([(d['team']=='blue')*d.get('replicas',1) for d in self.agents_description]) > 1
+		if not self.use_encoder:
+			assert not self.MA, 'Multi-Agents mode is not supported in no_encoder mode.'
+
 		filename = os.path.join(os.getcwd().split('thesis')[-2],'thesis/tanksEnv/los100.pkl')
 		with open(filename, 'rb') as file:
 			self.los_dict = pickle.load(file)
-		self.action_names = create_actions_set(kwargs.get('N_aim',2))
+		self.action_names = create_actions_set(kwargs.get('N_aim',default['N_aim']))
 		self.n_actions = len(self.action_names)
-		self.max_cycles = kwargs.get('max_cycles',-1)
-		self.remember_aim = kwargs.get('remember_aim',True)
-		self.max_ammo = kwargs.get('ammo',-1)
+		self.max_cycles = kwargs.get('max_cycles',default['max_cycles'])
+		self.remember_aim = kwargs.get('remember_aim',default['remember_aim'])
+		self.max_ammo = kwargs.get('ammo',default['ammo'])
 		self.reset()
 
 	def add_borders_to_obstacles(self):
@@ -110,8 +137,6 @@ class Environment:
 
 	def get_observation(self):
 
-		# assert not self.MA, 'Multi Agent not properly implemented'
-		# if not self.MA:
 		agent = self.current_player
 		pos = self.positions[agent]
 		# if not self.blue_players:
@@ -132,12 +157,17 @@ class Environment:
 			aim = -1
 		else:
 			aim = aim.id
-		agent_obs += [aim]
+		if self.remember_aim:
+			agent_obs += [aim]
 
-		# if self.MA:
-		# 	continue
+		if self.use_encoder:
+			foes = list(self.foes_encoder(torch.tensor(foes)).squeeze(0).numpy())
+			observation = agent_obs + foes
+		else:
+			observation = agent_obs + foes[0]
 
-		return agent_obs, foes, obstacles
+		return observation
+
 
 	# def current_state(self,agent):
 	# 	pos = self.positions[agent]
@@ -414,7 +444,7 @@ class Environment:
 	
 class Graphics:
 	def __init__(self,env,**kwargs):
-		self.size = kwargs.get('im_size',480)
+		self.size = kwargs.get('im_size',default['im_size'])
 		game_size = env.size
 		self.size = (int(np.ceil(self.size*game_size[0]/game_size[1])),self.size)
 		self.szi = self.size[0]/game_size[0]
