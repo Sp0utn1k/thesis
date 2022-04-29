@@ -8,7 +8,7 @@ rnn_size: 20
 rnn_type: 'LSTM'
 
   # Decoder:
-decoder_hidden_layers : [40,40]
+decoder_hidden_layers : [40]
 
   # Env params:
 visibility : 20

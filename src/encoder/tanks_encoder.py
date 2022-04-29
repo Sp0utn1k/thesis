@@ -113,11 +113,13 @@ if __name__ == '__main__':
     frozen_layer = 0
 
     if load_model:
-        encoder = torch.load(netfile+'encoder.pk').to(device)
-        decoder = torch.load(netfile+'decoder.pk').to(device)
+        encoder = torch.load(netfile+'encoder.pk')
+        decoder = torch.load(netfile+'decoder.pk')
     else:
-        encoder = RNNetwork(**config).to(device)
-        decoder = DecoderNN(config['output_size']+obs_length,hidden_layers=config['decoder_hidden_layers']).to(device)
+        encoder = RNNetwork(**config)
+        decoder = DecoderNN(config['output_size']+obs_length,hidden_layers=config['decoder_hidden_layers'])
+    encoder = encoder.to(device)
+    decoder = decoder.to(device)
 
     if not load_model and save_model:
         input(f'A new model will be created and saved in {netfile}.\nPress enter to continue.')
@@ -170,8 +172,8 @@ if __name__ == '__main__':
             writer.add_scalar('Recall',recall,epoch)
 
         if save_model and epoch % save_period == 0:
-            torch.save(encoder.to('cpu'),netfile+'encoder.pk')
-            torch.save(decoder.to('cpu'),netfile+'decoder.pk')
+            torch.save(encoder,netfile+'encoder.pk')
+            torch.save(decoder,netfile+'decoder.pk')
 
 
 

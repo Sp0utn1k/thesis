@@ -1,0 +1,35 @@
+########## LEARNING PARAMETERS ##########
+
+batch_size : 256
+buffer_size : 2000
+n_episodes : 5000
+lr : 0.001
+
+epsilon_decay: {'period': 500,
+'start': 1,
+'stop': .02,
+'shape': 'exponential'}
+
+gamma : .9
+net_sync_period : 10
+use_gpu: true
+
+########## ENVIRONMENT PARAMETERS ##########
+size : [10,10]
+agents_description : [
+{'pos0': 'random','team': 'blue'},
+{'pos0': 'random','team': 'red','policy': null}
+] 
+visibility: 10
+R50: 10
+max_cycles: 20
+render: false
+use_encoder: true
+
+########## AGENT PARAMETERS ##########
+pre_processing_layers: []
+post_processing_layers: []
+rnn_size: 32
+num_layers: 1
+rnn_type: 'lstm'
+max_depth: 0

@@ -16,8 +16,8 @@ max_foes : 4
 max_id : 10
 
   # Training params:
-learning_rate : 0.003
-batch_size : 256
+learning_rate : 0.001
+batch_size : 128
 epochs : 1000000
 use_gpu : True
 use_writer : True

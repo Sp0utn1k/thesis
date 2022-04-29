@@ -83,13 +83,6 @@ class RNNetwork(nn.Module):
 				print(f'Post net: {t}')
 				timer[1] = time.time()
 
-			# if self.rnn_type == 'lstm':
-			# 	h,c = hidden
-			# 	h = h.detach()
-			# 	c = c.detach()
-			# 	hidden = h,c
-			# else:
-			# 	hidden = hidden.detach()
 			if benchmark:
 				t_total = 1000*round(time.time()-timer[0],6)
 				print(f'Total: {t_total}\n')

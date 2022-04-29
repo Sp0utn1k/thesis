@@ -22,5 +22,4 @@ def build_network(input_size,output_size,layers):
 	return net
 
 def squash_packed(x, fn):
-    return PackedSequence(fn(x.data), x.batch_sizes, 
-                 x.sorted_indices, x.unsorted_indices)
+	return PackedSequence(fn(x.data),x.batch_sizes,x.sorted_indices,x.unsorted_indices)

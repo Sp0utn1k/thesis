@@ -6,7 +6,7 @@ import pickle
 import os
 import cv2 as cv
 from math import erf, sqrt
-
+import torch
 
 
 default = {'agents_description':[{'pos0':[0,0],'team': 'blue'},
@@ -50,8 +50,11 @@ class Environment:
 		# 		raise NameError(f'Unknown parameter \'{param}\'.')
 			
 		self.use_encoder = kwargs.get('use_encoder',default['use_encoder'])
-		self.agents_description = kwargs.get('agents_description',default['agents_description'])
+		if self.use_encoder:
+			self.foes_encoder = torch.load('tanksEnv/encoders/agents_encoder.pk').to('cpu')
+			self.foes_encoder.eval()
 
+		self.agents_description = kwargs.get('agents_description',default['agents_description'])
 		self.size  = kwargs.get('size',default['size'])
 		self.visibility = kwargs.get('visibility',default['visibility'])
 		self.R50 = kwargs.get('R50',default['R50'])
@@ -77,7 +80,9 @@ class Environment:
 		filename = os.path.join(os.getcwd().split('thesis')[-2],'thesis/tanksEnv/los100.pkl')
 		with open(filename, 'rb') as file:
 			self.los_dict = pickle.load(file)
-		self.action_names = create_actions_set(kwargs.get('N_aim',default['N_aim']))
+
+		self.N_aim = kwargs.get('N_aim',default['N_aim'])
+		self.action_names = create_actions_set(self.N_aim)
 		self.n_actions = len(self.action_names)
 		self.max_cycles = kwargs.get('max_cycles',default['max_cycles'])
 		self.remember_aim = kwargs.get('remember_aim',default['remember_aim'])
@@ -94,11 +99,11 @@ class Environment:
 		self.positions = {}
 		agents_description = self.agents_description
 		self.agents = []
-		for d in agents_description:
-			team = d['team']
-			pos0 = d.get('pos0','random')
-			replicas = d.get('replicas',1)
-			policy = d.get('policy','user')
+		for description in agents_description:
+			team = description['team']
+			pos0 = description.get('pos0','random')
+			replicas = description.get('replicas',1)
+			policy = description.get('policy','user')
 			assert team in ['blue','red'], 'Team must be red or blue'
 			for _ in range(replicas):
 				agent = Agent(team,id=len(self.agents),policy=policy)
@@ -109,8 +114,9 @@ class Environment:
 
 	def reset(self):
 		self.init_players()
-		self.red_players = [agent for agent in self.agents if agent.team=="red"]
-		self.blue_players = [agent for agent in self.agents if agent.team=="blue"]
+		assert len(self.agents) <= self.N_aim
+		self.red_agents = [agent for agent in self.agents if agent.team=="red"]
+		self.blue_agents = [agent for agent in self.agents if agent.team=="blue"]
 		self.ammo = {agent:self.max_ammo for agent in self.agents}
 		self.alive = {}
 		self.aim = {}
@@ -128,7 +134,7 @@ class Environment:
 					self.positions[agent] = [np.random.randint(self.size[0]),np.random.randint(self.size[1])]
 
 		if not self.MA:
-			self.current_player = self.blue_players[0]
+			self.current_player = self.blue_agents[0]
 		else:
 			self.current_player = self.get_player_by_id(0)
 
@@ -139,11 +145,14 @@ class Environment:
 
 		agent = self.current_player
 		pos = self.positions[agent]
-		# if not self.blue_players:
+		# if not self.blue_agents:
 		# 	print('WARNING: Agent is already dead.')
 		# 	return 
-		foes = [substract(self.positions[p],pos)+[p.id] for p in self.red_players 
-				if self.is_visible(pos,self.positions[p])and pos != self.positions[p]]
+		foes = [substract(self.positions[p],pos)+[p.id] for p in self.red_agents 
+				if self.is_visible(pos,self.positions[p]) and pos != self.positions[p]]
+		friends = [substract(self.positions[p],pos)+[p.id] for p in self.blue_agents 
+				if self.is_visible(pos,self.positions[p]) and pos != self.positions[p]]
+
 		if not foes:
 			foes = [[0,0,-1]]
 		obstacles = [substract(obstacle,pos) for obstacle in self.obstacles if self.is_visible(pos,obstacle)]
@@ -161,28 +170,14 @@ class Environment:
 			agent_obs += [aim]
 
 		if self.use_encoder:
-			foes = list(self.foes_encoder(torch.tensor(foes)).squeeze(0).numpy())
+			with torch.no_grad():
+				foes,_ = self.foes_encoder(torch.tensor(foes,dtype=torch.float32))
+				foes = list(foes.squeeze(0).numpy())
 			observation = agent_obs + foes
 		else:
 			observation = agent_obs + foes[0]
 
 		return observation
-
-
-	# def current_state(self,agent):
-	# 	pos = self.positions[agent]
-	# 	ammo = self.ammo[agent]
-	# 	player_obs = pos + [ammo]
-
-	# 	friends = [substract(self.positions[p],pos)+[p.id] for p in self.blue_players 
-	# 		if self.is_visible(pos,self.positions[p]) and pos != self.positions[p]]
-	# 	foes = [substract(self.positions[p],pos)+[p.id] for p in self.red_players 
-	# 		if self.is_visible(pos,self.positions[p])and pos != self.positions[p]]
-	# 	if agent.team == 'red':
-	# 		friends,foes = foes,friends
-	# 	obstacles = [substract(obstacle,pos) for obstacle in self.obstacles if self.is_visible(pos,obstacle)]
-
-	# 	return (player_obs,friends,foes,obstacles)
 
 	def get_list_obstacles(self,agent):
 		pos = self.positions[agent]
@@ -297,9 +292,24 @@ class Environment:
 
 		return obs,R,done,info
 
+	def play_red_agents(self):
+		self.update_agents()
+		for agent in self.red_agents:
+			if agent.policy  == None:
+				continue
+			elif agent.policy == 'random':
+				self.current_agent = agent
+				available_actions = [action for i in range(len(self.action_names)) 
+									if self.is_valid_action(agent,action)]
+				action = random.choice(available_actions)
+				self.action(action)
+			else:
+				raise AttributeError(f'Policy "{agent.policy}"" is not supported for red agents.')
+
 	def step(self,action,prompt_action=False):
 		agent = self.current_player
 		self.action(action)
+		self.play_red_agents()
 		self.update_agents()
 		self.cycle[agent] += 1
 		if prompt_action:
@@ -310,9 +320,9 @@ class Environment:
 			next_obs = self.get_observation()
 			done = self.episode_over()
 			info = None
+			return next_obs, R, done, info
 		else:
 			return
-		return next_obs, R, done, info
 
 	def get_random_action(self):
 		return np.random.choice(list(self.action_names.keys()))
@@ -321,15 +331,15 @@ class Environment:
 		for agent in self.agents:
 			self.update_agents()
 			self.current_player = agent
-			if self.alive[agent]:
+			if self.alive[agent] and agent.policy == 'user':
 				self.current_player = agent
 				yield agent.id
 
 	def update_agents(self):
 		self.agents = [p for p in self.agents if self.alive[p]]
 		# np.random.shuffle(self.agents)
-		self.red_players = [p for p in self.agents if p.team=="red"]
-		self.blue_players = [p for p in self.agents if p.team=="blue"]
+		self.red_agents = [p for p in self.agents if p.team=="red"]
+		self.blue_agents = [p for p in self.agents if p.team=="blue"]
 
 	def get_player_by_id(self,id):
 		return [p for p in self.agents if p.id==id][0]
@@ -365,9 +375,9 @@ class Environment:
 		return visibles
 
 	def winner(self):
-		if len(self.blue_players) == 0:
+		if len(self.blue_agents) == 0:
 			winner = 'red'
-		elif len(self.red_players) == 0:
+		elif len(self.red_agents) == 0:
 			winner = 'blue'
 		else:
 			winner = None
