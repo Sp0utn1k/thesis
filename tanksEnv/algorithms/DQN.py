@@ -155,11 +155,18 @@ class DQNRunner:
 		self.net_sync_period = kwargs.get('net_sync_period',1)
 		# self.rnn = agent.rnn
 
-	def run(self,N_episodes,render=False):
+	def run(self,N_episodes,render=False,train=True):
 
 		# timer = {'total':0,'train':0}
 		agent = self.agent
 		env = self.env
+
+		if train:
+			agent.net.train()
+		else:
+			agent.net.eval()
+			agent.epsilon = 0
+			
 		for episode_id in range(N_episodes):
 			
 			hidden = agent.init_hidden()
@@ -167,12 +174,11 @@ class DQNRunner:
 			state = torch.tensor(env.reset(),device=self.device,dtype=torch.float32).unsqueeze(0)
 			done = False
 			episode_length = 0.0
-			loss = 0.0
 			all_states = []
 			while not done:
-				# timer['total'] = time.time()
 				episode_length += 1.0
-				agent.set_epsilon(episode_id)
+				if train:
+					agent.set_epsilon(episode_id)
 				action, hidden = agent.get_action(state,hidden)
 				next_state, reward, done, _ = env.step(action)
 				next_state = torch.tensor(next_state,device=self.device,dtype=torch.float32).unsqueeze(0)
@@ -181,22 +187,14 @@ class DQNRunner:
 				self.buffer.append(episode)
 				state = copy.deepcopy(next_state)
 				total_reward += reward
-				if loss != None and len(self.buffer) >= self.batch_size:
-					# timer['train'] = time.time()
-					loss += agent.train_net(self.buffer.sample(self.batch_size))
-					# training_time = 1000*round(time.time() - timer['train'],6)
-					# print(f'Training: {training_time}')
-				else:
-					loss = None
 				if render:
 					env.render()
-				# total_time = 1000*round(time.time() - timer['total'],6)
-				# print(f'Total: {total_time}')
 
+			if train and len(self.buffer) >= self.batch_size:
+				loss = agent.train_net(self.buffer.sample(self.batch_size))
+			else:
+				loss = None
 			if episode_id % self.net_sync_period == 0:
 				agent.sync_nets()
-
-			if loss != None:
-				loss /= episode_length
 
 			yield episode_id,episode_length,total_reward,loss

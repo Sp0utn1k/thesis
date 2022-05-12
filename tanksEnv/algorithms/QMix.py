@@ -83,6 +83,7 @@ class QMixRunner:
 			
 
 			if len(qmix_buffer) >= self.batch_size:
+				
 				agents,agents_buffers_list = zip(*list(agents_buffers.items()))
 				buffers = (qmix_buffer,*agents_buffers_list)
 				batches = list(zip(*random.sample(list(zip(*buffers)),self.batch_size)))

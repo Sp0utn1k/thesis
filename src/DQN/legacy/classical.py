@@ -26,3 +26,5 @@ if __name__ == "__main__":
 		if loss != None:
 			writer.add_scalar('loss',loss,episode)
 	writer.close()
+
+	runner.run(5,render=settings.get('render',True))

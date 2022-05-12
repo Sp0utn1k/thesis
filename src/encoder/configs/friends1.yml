@@ -1,0 +1,29 @@
+  # Encoder:
+input_size : 4
+output_size : 15
+pre_processing_layers : [16]
+num_layers : 1
+post_processing_layers : []
+rnn_size: 64
+rnn_type: 'GRU'
+
+  # Decoder:
+decoder_hidden_layers : [64]
+
+  # Env params:
+visibility : 20
+max_friends : 4
+max_id : 10
+max_ammo : 10
+
+  # Training params:
+learning_rate : 0.003
+batch_size : 256
+epochs : 1000000
+use_gpu : True
+use_writer : True
+load_model : False
+save_model : True
+save_period : 10000
+start_freezing : 100000000
+freeze_period : 100

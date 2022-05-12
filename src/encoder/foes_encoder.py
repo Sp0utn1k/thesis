@@ -6,13 +6,15 @@ import copy
 import torch
 from torch import nn,optim
 from tensorboardX import SummaryWriter
+import time
+import sys
 
 def generate_dummy_foe(vis_grid,idx=0):
 
     if isinstance(idx,int):
         assert idx>-1, "id must be positive or 0."
     else:
-        assert isinstance(idx,list) and all(list(map(lambda x: isinstance(x,int), idx))), "id must be an integer or a list of intigers."
+        assert isinstance(idx,list) and all(list(map(lambda x: isinstance(x,int), idx))), "id must be an integer or a list of integers."
         idx = random.choice(idx)
 
     [x,y] = random.choice(vis_grid)
@@ -45,13 +47,16 @@ def generate_sample(vis_grid,max_length,max_id,device='cpu'):
             return generate_sample(vis_grid,max_length,max_id,device=device)
         positions.append(pos)
 
-    empty_tiles = [pos for pos in vis_grid if pos not in positions]
-
     if length == 0:
         observation.append([0,0,-1])
-        
-        positive = copy.deepcopy(random.choice(empty_tiles))
-        positive.append(random.randrange(max_id+1))
+        positive = observation[0]
+        r = random.random()
+        while positive in observation:
+            if r < .5:
+                positive = random.choice(observation)[:2]
+            else:
+                positive = copy.deepcopy(random.choice(vis_grid))
+            positive.append(random.randrange(max_id+1))
         no_agent = True
     else:
         positive = copy.deepcopy(random.choice(observation))
@@ -59,10 +64,16 @@ def generate_sample(vis_grid,max_length,max_id,device='cpu'):
 
     positive = torch.tensor(positive,dtype=torch.float32,device=device)
 
-    observation = torch.tensor(observation,dtype=torch.float32,device=device)
-    negative = copy.deepcopy(random.choice(empty_tiles))
-    negative.append(random.randrange(max_id+1))
+    negative = observation[0]
+    r = random.random()
+    while negative in observation:
+        if r < .5:
+            negative = random.choice(observation)[:2]
+        else:
+            negative = copy.deepcopy(random.choice(vis_grid))
+        negative.append(random.randrange(max_id+1))
     negative = torch.tensor(negative,dtype=torch.float32,device=device)
+    observation = torch.tensor(observation,dtype=torch.float32,device=device)
 
     return observation,positive,negative,no_agent
 
@@ -85,7 +96,9 @@ def generate_batch(vis_grid,max_length,max_id,batch_size,device='cpu'):
 
 if __name__ == '__main__':
 
-    config_id = 'config2'
+    config_id = sys.argv[1]
+
+    config_id = f'foes{config_id}'
     print(f'Config: {config_id}.yml')
     with open(f'configs/{config_id}.yml','r') as file:
         config = yaml.safe_load(file)
@@ -121,6 +134,7 @@ if __name__ == '__main__':
     encoder = encoder.to(device)
     decoder = decoder.to(device)
 
+
     if not load_model and save_model:
         input(f'A new model will be created and saved in {netfile}.\nPress enter to continue.')
     
@@ -128,7 +142,8 @@ if __name__ == '__main__':
     loss_f = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(list(encoder.parameters())+list(decoder.parameters()),lr=learning_rate)
     if use_writer:
-        writer = SummaryWriter()
+        timestr = time.strftime('/%Y_%m_%d-%Hh%M')
+        writer = SummaryWriter('runs/'+config_id+timestr)
 
     for epoch in range(epochs):
 
@@ -176,9 +191,5 @@ if __name__ == '__main__':
             torch.save(decoder,netfile+'decoder.pk')
 
 
-
     if use_writer:
         writer.close()
-
-    rnn1 = nn.LSTM(input_size=10, hidden_size=5, num_layers=3)
-    

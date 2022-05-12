@@ -7,12 +7,6 @@ import torch
 if __name__ == '__main__':
 
     N_episodes = 5000
-    # epsilon_decay = {
-    #     'start':1.0,
-    #     'stop':0.2,
-    #     'period':N_episodes,
-    #     'shape':'linear'
-    # }
     env = twoStepEnv.Environment()
     network = FCNetwork(env.obs_size,env.n_actions,hidden_layers=[64])
     # network = RNNetwork(env.obs_size,env.n_actions,rnn_size=64)
@@ -29,6 +23,7 @@ if __name__ == '__main__':
             # print(f'{episode}')
         continue
     # writer.close()
+
 
 
     qmix.epsilon = 0
