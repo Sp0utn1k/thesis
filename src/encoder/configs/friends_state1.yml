@@ -5,13 +5,13 @@ pre_processing_layers : [16]
 num_layers : 1
 post_processing_layers : []
 rnn_size: 64
-rnn_type: 'LSTM'
+rnn_type: 'GRU'
 
   # Decoder:
 decoder_hidden_layers : [64]
 
   # Env params:
-visibility : 20
+size : 20
 max_friends : 4
 max_id : 10
 max_ammo : 10

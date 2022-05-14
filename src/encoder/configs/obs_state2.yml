@@ -1,17 +1,17 @@
   # Encoder:
 input_size : 2
 output_size : 40
-pre_processing_layers : [8]
-num_layers : 1
+pre_processing_layers : [64]
+num_layers : 2
 post_processing_layers : []
 rnn_size: 256
-rnn_type: 'GRU'
+rnn_type: 'LSTM'
 
   # Decoder:
-decoder_hidden_layers : [64]
+decoder_hidden_layers : [64,64]
 
   # Env params:
-visibility : 20
+size : 20
 max_obs : 20
 
   # Training params:
@@ -23,4 +23,3 @@ use_writer : True
 load_model : False
 save_model : True
 save_period : 1000
-

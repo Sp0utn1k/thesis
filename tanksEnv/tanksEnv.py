@@ -158,7 +158,7 @@ class Environment:
 
 		foes = [substract(self.positions[p],pos)+[p.id] for p in other_team 
 				if self.is_visible(pos,self.positions[p]) and pos != self.positions[p]]
-		friends = [substract(self.positions[p],pos)+[p.id]+self.ammo[p] for p in team
+		friends = [substract(self.positions[p],pos)+[p.id]+[self.ammo[p]] for p in team
 				if self.is_visible(pos,self.positions[p]) and pos != self.positions[p]]
 
 		if not foes:
@@ -187,7 +187,7 @@ class Environment:
 				foes = list(foes.squeeze(0).numpy())
 				observation = agent_obs + foes
 				if self.MA:
-					friends,_ = self.foes_encoder(torch.tensor(friends,dtype=torch.float32))
+					friends,_ = self.friends_encoder(torch.tensor(friends,dtype=torch.float32))
 					friends = list(friends.squeeze(0).numpy())
 					observation += friends
 
@@ -210,34 +210,63 @@ class Environment:
 
 		return observation
 
-	def get_state(self):
-		foes = [self.positions[p]+[p.id] for p in self.red_agents]
-		friends = [self.positions[p]+[p.id] for p in self.blue_agents]
+	def get_state(self, team_name='blue'):
+
+		team = self.blue_agents if team_name == 'blue' else self.red_agents
+		other_team = self.blue_agents if team_name == 'red' else self.red_agents
+
+		n_team = self.n_blue if team_name == 'blue' else self.n_red
+		n_others = self.n_blue if team_name == 'red' else self.n_red
+
+		foes = [self.positions[p]+[p.id] for p in other_team]
+		friends = []
+		for p in team:
+			friend = self.positions[p]
+			friend.append(p.id)
+			friend.append(self.ammo[p])
+			aim = self.aim.get(p,None)
+			if aim == None:
+				aim = -1
+			else:
+				aim = aim.id
+			friend.append(aim)
+			friends.append(friend)
+
+		obstacles = copy.copy(self.obstacles)
 
 		if not foes:
-			foes = [[0,0,-1]]
+			foes = [[-10,-10,-1]]
 		if not friends:
-			friends = [[0,0,-1]]
-		obstacles = self.obstacles
+			friends = [[-10,-10,-1,0]]
+
 		if not obstacles:
-			obstacles = [[0,0]]
+			obstacles = [[-10,-10]]
+		
+		if self.observation_mode == 'encoded':
+			with torch.no_grad():
+				foes,_ = self.state_foes_encoder(torch.tensor(foes,dtype=torch.float32))
+				foes = list(foes.squeeze(0).numpy())
+				observation = foes
+				
+				friends,_ = self.state_friends_encoder(torch.tensor(friends,dtype=torch.float32))
+				friends = list(friends.squeeze(0).numpy())
+				observation += friends
 
-		# if self.observation_mode == 'encoded':
-		# 	with torch.no_grad():
-		# 		foes,_ = self.foes_encoder(torch.tensor(foes,dtype=torch.float32))
-		# 		foes = list(foes.squeeze(0).numpy())
-		# 	observation = foes
-
-		if self.observation_mode == 'array':
-			while len(foes) < self.n_red:
+		elif self.observation_mode == 'array':
+			while len(foes) < n_others:
 				foes.append([0,0,-1])
-			while len(friends) < self.n_blue:
-				friends.append([0,0,-1])
 			foes = np.array(foes).flatten()
-			friends = np.array(friends).flatten()
-			state = list(foes) + list(friends)
+			observation = list(foes)
+			if self.MA:
+				while len(friends) < n_team:
+					foes.append([0,0,-1,0])
+				friends = np.array(friends).flatten()
+				observation += list(friends)
 
-		return state
+		elif self.observation_mode == 'raw':
+				observation = foes, friends, obstacles
+
+		return observation
 
 
 	def next_tile(self,agent,act):

@@ -1,6 +1,6 @@
   # Encoder:
-input_size : 4
-output_size : 15
+input_size : 3
+output_size : 12
 pre_processing_layers : [16]
 num_layers : 1
 post_processing_layers : []
@@ -8,13 +8,13 @@ rnn_size: 64
 rnn_type: 'LSTM'
 
   # Decoder:
-decoder_hidden_layers : [64]
+decoder_hidden_layers : [40]
 
   # Env params:
-visibility : 20
-max_friends : 4
+size : 40
+max_foes : 4
 max_id : 10
-max_ammo : 10
+
 
   # Training params:
 learning_rate : 0.003

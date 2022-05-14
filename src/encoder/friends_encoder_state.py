@@ -27,18 +27,8 @@ def generate_dummy_friend(vis_grid,idx=0,ammo=0):
     return [x,y,idx,ammo]
 
 def generate_vis_grid(size):
-    visibility=size
-    vis_grid = []
-    for x in range(0,visibility+1):
-        for y in range(0,visibility+1):
-            if [x,y] != [0,0] and math.sqrt(x**2+y**2) <= visibility:
-                vis_grid.append([x,y])
-                if x:
-                    vis_grid.append([-x,y])
-                    if y:
-                        vis_grid.append([-x,-y])
-                if y:
-                    vis_grid.append([x,-y])
+    
+    vis_grid = [[x,y] for x in range(-1,size+1) for y in range(-1,size+1)]
     return vis_grid
 
 def generate_sample(vis_grid,max_length,max_id,max_ammo,device='cpu'):
@@ -120,7 +110,7 @@ if __name__ == '__main__':
 
     config_id = sys.argv[1]
 
-    config_id = f'friends{config_id}'
+    config_id = f'friends_state{config_id}'
     print(f'Config: {config_id}.yml')
     with open(f'configs/{config_id}.yml','r') as file:
         config = yaml.safe_load(file)
@@ -130,7 +120,7 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() and config.get('use_gpu',False) else "cpu")
     print(f'Device: {device}')
 
-    visibility = config['visibility']
+    size = config['size']
     max_id = config['max_id']
     max_ammo = config['max_ammo']
     max_friends = config['max_friends']
@@ -160,7 +150,7 @@ if __name__ == '__main__':
     if not load_model and save_model:
         input(f'A new model will be created and saved in {netfile}.\nPress enter to continue.')
     
-    vis_grid = generate_vis_grid(visibility)
+    vis_grid = generate_vis_grid(size)
     loss_f = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(list(encoder.parameters())+list(decoder.parameters()),lr=learning_rate)
     if use_writer:

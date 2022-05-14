@@ -1,0 +1,13 @@
+agents_description : [
+{'pos0': 'random','team': 'blue','replicas': 2},
+{'pos0': 'random','team': 'red','policy': 'random','replicas': 2}
+] 
+size: [20,20]
+visibility: 12
+R50: 10
+obstacles: []
+borders_in_obstacles: False
+N_aim: 10
+max_cycles: 50
+ammo: -1
+observation_mode: 'encoded'

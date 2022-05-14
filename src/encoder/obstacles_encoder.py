@@ -42,7 +42,6 @@ def generate_sample(vis_grid,hidden_dict,max_length,device='cpu'):
 
     observation = []
     length = random.randrange(max_length+1)
-    hiddens = [[True for _ in range(25)] for _ in range(25)]
     # grid = copy.deepcopy(vis_grid)
     grid = vis_grid
     for _ in range(length):
@@ -53,10 +52,8 @@ def generate_sample(vis_grid,hidden_dict,max_length,device='cpu'):
         x,y = obs
         observation.append(obs)
         
-        hiddens[x][y] = False
-        for [x,y] in hidden_dict[x,y]:
-            hiddens[x][y] = False
-
+        hiddens = [obs]
+        hiddens += hidden_dict[x,y]
         # sz = 0
         # for [x,y] in grid:
         #     if hiddens[x][y]:
@@ -64,7 +61,8 @@ def generate_sample(vis_grid,hidden_dict,max_length,device='cpu'):
         #         sz += 1
         # grid = grid[:sz]
 
-        grid = [[x,y] for [x,y] in grid if hiddens[x][y]]
+        grid = [pos for pos in grid if pos not in hiddens]
+
         if not grid:
             grid = prev_grid
             observation.pop()
@@ -191,7 +189,7 @@ def main():
             writer.add_scalar('Accuracy',accuracy,epoch)
             writer.add_scalar('Recall',recall,epoch)
 
-        if save_model and epoch % save_period == 0:
+        if save_model and (epoch+1) % save_period == 0:
             torch.save(encoder,netfile+'encoder.pk')
             torch.save(decoder,netfile+'decoder.pk')
 
