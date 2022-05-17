@@ -58,12 +58,11 @@ class Agent:
 
 	def get_action(self,state,hidden):
 		state = torch.tensor(state,device=self.device,dtype=torch.float32).unsqueeze(0)
-		if self.n_actions == None:
-			q_values,_ = self.net(state)
-			self.n_actions = q_values.size(-1)
 		assert(state.shape[0] == 1)
 		with torch.no_grad():
-				Qvalues,next_hidden = self.net(state.to(self.device),hidden=hidden)
+			Qvalues,next_hidden = self.net(state,hidden=hidden)
+		if self.n_actions == None:
+			self.n_actions = Qvalues.size(-1)
 		if random.random() < self.epsilon:
 			action = random.randrange(self.n_actions)
 		else:	
@@ -158,7 +157,7 @@ class DQNRunner:
 		self.net_sync_period = kwargs.get('net_sync_period',1)
 		# self.rnn = agent.rnn
 
-	def run(self,N_episodes,render=False,train=True):
+	def run(self,N_episodes,render=False,train=True,start_episode=0,get_red_reward=False):
 
 		# timer = {'total':0,'train':0}
 		agent = self.agent
@@ -170,10 +169,11 @@ class DQNRunner:
 			agent.net.eval()
 			agent.epsilon = 0
 			
-		for episode_id in range(N_episodes):
+		for episode_id in range(start_episode,start_episode+N_episodes):
 			
 			hidden = agent.init_hidden()
 			total_reward = 0.0
+			total_red_reward = 0.0
 			state = env.reset()
 			done = False
 			episode_length = 0.0
@@ -190,6 +190,7 @@ class DQNRunner:
 				self.buffer.append(episode)
 				state = next_state
 				total_reward += reward
+				total_red_reward += env.get_red_reward()
 				if render:
 					env.render()
 
@@ -199,5 +200,7 @@ class DQNRunner:
 				loss = None
 			if episode_id % self.net_sync_period == 0:
 				agent.sync_nets()
-
-			yield episode_id,episode_length,total_reward,loss
+			if get_red_reward:
+				yield episode_id,episode_length,total_reward,loss,total_red_reward
+			else:
+				yield episode_id,episode_length,total_reward,loss

@@ -23,7 +23,7 @@ agents_description : [
 N_aim: 5 
 visibility: 7
 R50: 5
-max_cycles: 25
+max_cycles: 40
 render: false
 ammo: 5
 observation_mode: 'encoded'

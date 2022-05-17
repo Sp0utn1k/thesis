@@ -15,15 +15,15 @@ net_sync_period : 25
 use_gpu: true
 
 ########## ENVIRONMENT PARAMETERS ##########
-size : [10,10]
+size : [30,10]
 agents_description : [
 {'pos0': 'random','team': 'blue'},
 {'pos0': 'random','team': 'red','policy': 'random'}
 ] 
 N_aim: 5 
-visibility: 7
-R50: 5
-max_cycles: 25
+visibility: 12
+R50: 7
+max_cycles: 40
 render: false
 ammo: 5
 observation_mode: 'encoded'

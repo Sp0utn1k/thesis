@@ -23,8 +23,8 @@ default = {'agents_description':[{'pos0':[0,0],'team': 'blue'},
 			'remember_aim':True,
 			'ammo':-1,
 			'im_size':480,
-			'observation_mode':'encoded'
-			'red_agent':None
+			'observation_mode':'encoded',
+			'red_agent':None,
 			'red_observation_mode':'encoded'
 			}
 class Agent:
@@ -66,8 +66,6 @@ class Environment:
 		self.R50 = kwargs.get('R50',default['R50'])
 
 		self.obstacles = kwargs.get('obstacles',default['obstacles'])
-		if self.observation_mode != 'encoded':
-			assert self.obstacles == [] or __name__ == '__main__', 'Using obstacles is only possible in encoder mode.'
 		if kwargs.get('borders_in_obstacles',default['borders_in_obstacles']):
 			self.add_borders_to_obstacles()
 
@@ -150,6 +148,8 @@ class Environment:
 		self.ammo = {agent:self.max_ammo for agent in self.agents}
 		self.alive = {}
 		self.aim = {}
+		if self.red_agent:
+			self.red_hidden = self.red_agent.init_hidden()
 
 		for agent in self.agents:
 			self.alive[agent] = True
@@ -187,7 +187,7 @@ class Environment:
 		friends = [substract(self.positions[p],pos)+[p.id]+[self.ammo[p]] for p in team
 				if self.is_visible(pos,self.positions[p]) and pos != self.positions[p]]
 
-		obstacles = [substract(obs,pos) for obs in obstacles if self.is_visible(pos,obstacles)]
+		obstacles = [substract(obs,pos) for obs in self.obstacles if self.is_visible(pos,obs)]
 
 		if not foes:
 			foes = [[0,0,-100]]
@@ -230,7 +230,7 @@ class Environment:
 				while len(obstacles) < len(self.obstacles):
 					obstacles.append([0,0])
 				obstacles = np.array(obstacles).flatten()
-				observation += list(obstacles)obstacles
+				observation += list(obstacles)
 			if self.MA:
 				while len(friends) < n_team:
 					foes.append([0,0,-100,0])
@@ -349,10 +349,13 @@ class Environment:
 		return False
 
 	def action(self,action):
+
+
 		agent = self.current_agent
 		if not self.is_valid_action(agent,action):
 			return False
 		act = self.action_names[action]
+
 		if act in ['north','south','west','east']:
 			self.positions[agent] = self.next_tile(agent,act)
 			# print(f'Agent {agent.id} ({agent.team}) goes {act}')
@@ -392,16 +395,19 @@ class Environment:
 		std = sum([r**i*coeffs[i] for i in range(len(coeffs))])
 		return erf(1/std/sqrt(2))
 
-	def get_reward(self):
-		p = self.current_agent
+	def get_reward(self,team=None):
+		team = team or self.current_agent.team
 		winner = self.winner()
-		if winner == p.team:
+		if winner == team:
 			R = 1
 		elif winner == None:
 			R = -.01
 		else:
 			R = -1
 		return R
+
+	def get_red_reward(self):
+		return self.get_reward(team='red')
 
 	def last(self):
 		
@@ -415,13 +421,18 @@ class Environment:
 	def play_red_agents(self):
 		prev_current = self.current_agent
 		for agent in self.red_agents:
+			self.current_agent = agent
 			if agent.policy  == None:
 				continue
 			elif agent.policy == 'random':
-				self.current_agent = agent
 				available_actions = [action for action in range(len(self.action_names)) 
 									if self.is_valid_action(agent,action)]
 				action = np.random.choice(available_actions)
+				self.action(action)
+			elif 'smart_agent' in agent.policy:
+				state = self.get_observation()
+				with torch.no_grad():
+					action, self.red_hidden = self.red_agent.get_action(state,self.red_hidden)
 				self.action(action)
 			else:
 				raise AttributeError(f'Policy "{agent.policy}"" is not supported for red agents.')
@@ -616,8 +627,9 @@ class Graphics:
 	def __init__(self,env,**kwargs):
 		self.size = kwargs.get('im_size',default['im_size'])
 		game_size = env.size
-		self.size = (int(np.ceil(self.size*game_size[0]/game_size[1])),self.size)
-		self.szi = round(self.size[0]/game_size[0])
+		self.szi = round(self.size/game_size[1])
+		self.size = (self.szi*game_size[0],self.szi*game_size[1])
+		
 		self.background_color = self.to_color([133,97,35])
 		self.red = self.to_color([255,0,0])
 		self.blue = self.to_color([30,144,255])
@@ -628,9 +640,9 @@ class Graphics:
 		self.image = np.full((self.size[1],self.size[0],3),self.background_color,dtype=np.uint8)
 
 	def add_grid(self):
-		for i in range(self.szi,self.size[0],self.szi):
+		for i in range(self.szi,self.size[1],self.szi):
 			self.image[i,:,:] = 0
-		for j in range(self.szi,self.size[1],self.szi):
+		for j in range(self.szi,self.size[0],self.szi):
 			self.image[:,j,:] = 0
 
 	def to_color(self,color):
