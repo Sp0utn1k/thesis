@@ -1,6 +1,6 @@
   # Encoder:
 input_size : 2
-output_size : 40
+output_size : 32
 pre_processing_layers : [64]
 num_layers : 2
 post_processing_layers : []
@@ -12,11 +12,11 @@ decoder_hidden_layers : [64,64]
 
   # Env params:
 visibility : 20
-max_obs : 20
+max_obs : 12
 
   # Training params:
 learning_rate : 0.003
-batch_size : 128
+batch_size : 256
 epochs : 500000
 use_gpu : True
 use_writer : True

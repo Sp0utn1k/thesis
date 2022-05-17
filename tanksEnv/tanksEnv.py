@@ -24,6 +24,8 @@ default = {'agents_description':[{'pos0':[0,0],'team': 'blue'},
 			'ammo':-1,
 			'im_size':480,
 			'observation_mode':'encoded'
+			'red_agent':None
+			'red_observation_mode':'encoded'
 			}
 class Agent:
 	def __init__(self,team,id=0,policy='user'):
@@ -32,6 +34,7 @@ class Agent:
 		self.team = team
 		self.id = id
 		self.policy = policy
+		self.name = self.__str__()
 
 	def __str__(self):
 		return f'Agent{self.id} ({self.team})'
@@ -50,15 +53,12 @@ class Environment:
 		# 		raise NameError(f'Unknown parameter \'{param}\'.')
 			
 		self.observation_mode = kwargs.get('observation_mode',default['observation_mode'])
+		self.red_agent = kwargs.get('red_agent',default['red_agent'])
+		self.red_observation_mode = kwargs.get('red_observation_mode',default['red_observation_mode'])
 		assert self.observation_mode in ['encoded','array','raw'], 'Unknown observation mode.'
-		if self.observation_mode == 'encoded':
-			filename_foe = os.path.join(os.path.dirname(__file__), 'encoders/foes_encoder.pk')
-			self.foes_encoder = torch.load(filename_foe).to('cpu')
-			self.foes_encoder.eval()
-
-			filename_friend = os.path.join(os.path.dirname(__file__), 'encoders/friends_encoder.pk')
-			self.friends_encoder = torch.load(filename_friend).to('cpu')
-			self.friends_encoder.eval()
+		assert self.red_observation_mode in ['encoded','array','raw'], 'Unknown red observation mode.'
+		if self.observation_mode == 'encoded' or self.red_observation_mode == 'encoded':
+			self.load_encoders()
 
 		self.agents_description = kwargs.get('agents_description',default['agents_description'])
 		self.size  = kwargs.get('size',default['size'])
@@ -94,6 +94,30 @@ class Environment:
 		self.remember_aim = kwargs.get('remember_aim',default['remember_aim'])
 		self.max_ammo = kwargs.get('ammo',default['ammo'])
 		self.reset()
+
+		self.obs_size = len(self.get_observation())
+		self.state_size = len(self.get_state())
+
+	def load_encoders(self):
+		filename_foe = os.path.join(os.path.dirname(__file__), 'encoders/foes_encoder.pk')
+		self.foes_encoder = torch.load(filename_foe).to('cpu')
+		self.foes_encoder.eval()
+
+		filename_friend = os.path.join(os.path.dirname(__file__), 'encoders/friends_encoder.pk')
+		self.friends_encoder = torch.load(filename_friend).to('cpu')
+		self.friends_encoder.eval()
+
+		filename_obstacle = os.path.join(os.path.dirname(__file__), 'encoders/obstacles_encoder.pk')
+		self.obstacles_encoder = torch.load(filename_obstacle).to('cpu')
+		self.obstacles_encoder.eval()
+
+		filename_foe_state = os.path.join(os.path.dirname(__file__), 'encoders/foes_state_encoder.pk')
+		self.foes_state_encoder = torch.load(filename_foe_state).to('cpu')
+		self.foes_state_encoder.eval()
+
+		filename_friend_state = os.path.join(os.path.dirname(__file__), 'encoders/friends_state_encoder.pk')
+		self.friends_state_encoder = torch.load(filename_friend_state).to('cpu')
+		self.friends_state_encoder.eval()
 
 	def add_borders_to_obstacles(self):
 		self.obstacles += [[x,-1] for x in range(self.size[0])]
@@ -148,7 +172,9 @@ class Environment:
 	def get_observation(self):
 
 		agent = self.current_agent
-		pos = self.positions[agent]
+		pos = copy.copy(self.positions[agent])
+
+		observation_mode = self.observation_mode if agent.team=='blue' else self.red_observation_mode
 
 		team = self.blue_agents if agent.team == 'blue' else self.red_agents
 		other_team = self.blue_agents if agent.team == 'red' else self.red_agents
@@ -161,17 +187,17 @@ class Environment:
 		friends = [substract(self.positions[p],pos)+[p.id]+[self.ammo[p]] for p in team
 				if self.is_visible(pos,self.positions[p]) and pos != self.positions[p]]
 
-		if not foes:
-			foes = [[0,0,-1]]
-		if not friends:
-			friends = [[0,0,-1,0]]
+		obstacles = [substract(obs,pos) for obs in obstacles if self.is_visible(pos,obstacles)]
 
-		obstacles = [substract(obstacle,pos) for obstacle in self.obstacles if self.is_visible(pos,obstacle)]
+		if not foes:
+			foes = [[0,0,-100]]
+		if not friends:
+			friends = [[0,0,-100,0]]
 		if not obstacles:
 			obstacles = [[0,0]]
 
 		# Create agent_obs
-		agent_obs = copy.copy(pos)
+		agent_obs = pos
 		agent_obs.append(self.ammo[agent])
 		aim = self.aim.get(agent,None)
 		if aim == None:
@@ -181,30 +207,39 @@ class Environment:
 		if self.remember_aim:
 			agent_obs += [aim]
 
-		if self.observation_mode == 'encoded':
+		if observation_mode == 'encoded':
 			with torch.no_grad():
 				foes,_ = self.foes_encoder(torch.tensor(foes,dtype=torch.float32))
 				foes = list(foes.squeeze(0).numpy())
 				observation = agent_obs + foes
+				if self.obstacles:
+					obstacles,_ = self.obstacles_encoder(torch.tensor(obstacles,dtype=torch.float32))
+					obstacles = list(obstacles.squeeze(0).numpy())
+					observation += obstacles
 				if self.MA:
 					friends,_ = self.friends_encoder(torch.tensor(friends,dtype=torch.float32))
 					friends = list(friends.squeeze(0).numpy())
 					observation += friends
 
-		elif self.observation_mode == 'array':
+		elif observation_mode == 'array':
 			while len(foes) < n_others:
-				foes.append([0,0,-1])
+				foes.append([0,0,-100])
 			foes = np.array(foes).flatten()
 			observation = agent_obs + list(foes)
+			if self.obstacles:
+				while len(obstacles) < len(self.obstacles):
+					obstacles.append([0,0])
+				obstacles = np.array(obstacles).flatten()
+				observation += list(obstacles)obstacles
 			if self.MA:
 				while len(friends) < n_team:
-					foes.append([0,0,-1,0])
+					foes.append([0,0,-100,0])
 				friends = np.array(friends).flatten()
 				observation += list(friends)
 
-		elif self.observation_mode == 'raw':
+		elif observation_mode == 'raw':
 			if self.MA:
-				observation = agent_obs, foes, friends
+				observation = agent_obs,foes,friends
 			else:
 				observation = agent_obs,foes
 
@@ -221,34 +256,34 @@ class Environment:
 		foes = [self.positions[p]+[p.id] for p in other_team]
 		friends = []
 		for p in team:
-			friend = self.positions[p]
+			friend = copy.copy(self.positions[p])
 			friend.append(p.id)
 			friend.append(self.ammo[p])
-			aim = self.aim.get(p,None)
-			if aim == None:
-				aim = -1
-			else:
-				aim = aim.id
-			friend.append(aim)
+			# aim = self.aim.get(p,None)
+			# if aim == None:
+			# 	aim = -1
+			# else:
+			# 	aim = aim.id
+			# friend.append(aim)
 			friends.append(friend)
 
 		obstacles = copy.copy(self.obstacles)
 
 		if not foes:
-			foes = [[-10,-10,-1]]
+			foes = [[-10,-10,-100]]
 		if not friends:
-			friends = [[-10,-10,-1,0]]
+			friends = [[-10,-10,-100,-1]]
 
 		if not obstacles:
 			obstacles = [[-10,-10]]
 		
 		if self.observation_mode == 'encoded':
 			with torch.no_grad():
-				foes,_ = self.state_foes_encoder(torch.tensor(foes,dtype=torch.float32))
+				foes,_ = self.foes_state_encoder(torch.tensor(foes,dtype=torch.float32))
 				foes = list(foes.squeeze(0).numpy())
 				observation = foes
 				
-				friends,_ = self.state_friends_encoder(torch.tensor(friends,dtype=torch.float32))
+				friends,_ = self.friends_state_encoder(torch.tensor(friends,dtype=torch.float32))
 				friends = list(friends.squeeze(0).numpy())
 				observation += friends
 
@@ -379,7 +414,6 @@ class Environment:
 
 	def play_red_agents(self):
 		prev_current = self.current_agent
-		self.update_agents()
 		for agent in self.red_agents:
 			if agent.policy  == None:
 				continue
@@ -394,6 +428,11 @@ class Environment:
 		self.current_agent = prev_current
 
 	def step(self,action,prompt_action=False):
+
+		if self.MA and self.is_done():
+			assert action==None, 'Action must be None when done is True.'
+			return 
+
 		agent = self.current_agent
 		self.action(action)
 		self.cycle[agent] += 1
@@ -416,13 +455,13 @@ class Environment:
 
 	def agent_iter(self):
 		done_agents = []
-		while self.winner() == None:
-			for agent in self.agents:
+		user_agents = len([agent for agent in self.agents if agent.policy == 'user'])
+		while len(done_agents) < user_agents:
+			for i,agent in enumerate(self.agents):
 				self.current_agent = agent
 				if not self.is_done():
-					self.update_players()
 					if agent.policy == 'user':
-						yield agent
+						yield agent, not i
 					elif agent.policy == None:
 						continue
 					elif agent.policy == 'random':
@@ -433,17 +472,18 @@ class Environment:
 
 				elif agent not in done_agents and agent.policy == 'user':
 					done_agents.append(agent)
-					yield agent
+					yield agent, not i
 					
 		for agent in self.agents:
 			if agent not in done_agents and agent.policy == 'user':
 				yield agent
 
 	def update_agents(self):
-		self.agents = [p for p in self.agents if self.alive[p]]
+		if not self.MA:
+			self.agents = [p for p in self.agents if self.alive[p]]
 		# np.random.shuffle(self.agents)
-		self.red_agents = [p for p in self.agents if p.team=="red"]
-		self.blue_agents = [p for p in self.agents if p.team=="blue"]
+		self.red_agents = [p for p in self.agents if p.team=="red" and self.alive[p] and self.ammo[p]]
+		self.blue_agents = [p for p in self.agents if p.team=="blue" and self.alive[p] and self.ammo[p]]
 
 	def get_player_by_id(self,id):
 		return [p for p in self.agents if p.id==id][0]
@@ -479,6 +519,7 @@ class Environment:
 		return visibles
 
 	def winner(self):
+		self.update_agents()		
 		if len(self.blue_agents) == 0:
 			winner = 'red'
 		elif len(self.red_agents) == 0:
@@ -489,18 +530,15 @@ class Environment:
 
 	def is_done(self):
 		agent = self.current_agent
-		if self.winner() != None:
-			return True
-		if self.cycle[agent] == self.max_cycles:
+		if self.cycle[agent] >= self.max_cycles:
 			return True
 		if not self.alive[agent]:
 			return True
-		done = True
-		for a in self.agents:
-			if self.ammo[agent] != 0:
-				done = False
-				break
-		return done
+		if not self.ammo[agent]:
+			return True
+		if self.winner() != None:
+			return True
+		return False
 
 	def render(self,twait=-1,save_image=False,filename='render.png'):
 		if twait == -1:
@@ -513,10 +551,10 @@ class Environment:
 			if not (x in [-1,self.size[0]] or y in [-1,self.size[1]]):
 				self.graphics.set_obstacle(x,y)
 		for agent in self.agents:
-			id = agent.id
+			idx = agent.id
 			team = agent.team	
 			pos = self.positions[agent]
-			self.graphics.add_agent(id,team,pos)
+			self.graphics.add_agent(idx,team,pos)
 		self.graphics.add_grid()
 		cv.imshow('image',self.graphics.image)
 		cv.waitKey(round(twait))
@@ -537,10 +575,10 @@ class Environment:
 			if x in range(self.size[0]) and y in range(self.size[1]):
 				self.graphics.set_obstacle(x,y)
 		for p in self.agents:
-			id = p.id
+			idx = p.id
 			team = p.team
 			pos = self.positions[p]
-			self.graphics.add_agent(id,team,pos)
+			self.graphics.add_agent(idx,team,pos)
 		for x in range(self.size[0]):
 			for y in range(self.size[1]):
 				if not self.is_visible(self.positions[agent],[x,y]):
@@ -570,6 +608,9 @@ class Environment:
 
 		los = [[i+vect1[0],j*(-1)**mirrored+vect1[1]] for [i,j] in self.los_dict[tuple(diff)]]
 		return los
+
+	def get_agents(self):
+		return [agent for agent in self.agents if agent.policy=='user']
 	
 class Graphics:
 	def __init__(self,env,**kwargs):

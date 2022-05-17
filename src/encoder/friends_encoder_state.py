@@ -50,7 +50,7 @@ def generate_sample(vis_grid,max_length,max_id,max_ammo,device='cpu'):
 
 
     if length == 0:
-        observation.append([0,0,-1,-1])
+        observation.append([-10,-10,-1,-1])
         # while positive in observation:
         #     print(r)
         #     if  r < .5:

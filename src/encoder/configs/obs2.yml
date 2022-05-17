@@ -1,21 +1,21 @@
   # Encoder:
-input_size : 2
-output_size : 40
+input_size : 9
+output_size : 32
 pre_processing_layers : [64]
-num_layers : 2
-post_processing_layers : []
+num_layers : 1
+post_processing_layers : [128]
 rnn_size: 256
-rnn_type: 'LSTM'
+rnn_type: 'GRU'
 
   # Decoder:
-decoder_hidden_layers : [64,64]
+decoder_hidden_layers : [256]
 
   # Env params:
-visibility : 20
-max_obs : 20
+visibility : 12
+max_obs : 12
 
   # Training params:
-learning_rate : 0.003
+learning_rate : 0.001
 batch_size : 128
 epochs : 500000
 use_gpu : True

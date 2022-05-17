@@ -32,30 +32,42 @@ class QMixRunner:
 		self.device = self.qmix.device
 		self.net_sync_period = kwargs.get('net_sync_period',default['net_sync_period'])
 
-	def run(self,N_episodes,render=False):
+	def run(self,N_episodes,render=False,train=True):
 		qmix_buffer = deque(maxlen=self.buffer_size)
-		agents_buffers = {agent:deque(maxlen=self.buffer_size) for agent in self.env.agents}
+		agents_buffers = {agent.name:deque(maxlen=self.buffer_size) for agent in self.env.get_agents()}
+
+		if not train:
+			# agent.net.eval()
+			for agent in self.env.agents:
+				agent.epsilon = 0
+		# else:
+		# 	agent.net.train()
+			
 
 		for episode_id in range(N_episodes):
 			self.env.reset()
 			hidden = self.qmix.init_hidden()
 			total_reward = 0.0
-			episode_length = 0.0
-			loss = 0.0
-			all_obs = {agent:[] for agent in self.env.agents}
-			for agent in self.env.agent_iter():
-				if agent == self.env.agents[0]:
-					episode_length += 1.0
-					self.qmix.set_epsilon(episode_id)
+			episode_length = 0
+			loss = None
+			all_obs = {agent.name:[] for agent in self.env.get_agents()}
+			episode_lengths = {agent.name:0 for agent in self.env.get_agents()}
+			for agent_obj, first_agent in self.env.agent_iter():
+				agent = agent_obj.name
+				episode_lengths[agent] += 1
+				if first_agent:
+					episode_length += 1
+					if train:
+						self.qmix.set_epsilon(episode_id)
 					state = torch.tensor(self.env.get_state(),dtype=torch.float32,device=self.device).unsqueeze(0)
 					if episode_length > 1:
 						qmix_buffer[-1].next_state = copy.deepcopy(state)
 					qmix_buffer.append(MixerTransition(state,0,None,True))
 
 				obs,reward,done,_ = self.env.last()
-				total_reward += reward
+				total_reward = reward
 				if episode_length > 1:
-					qmix_buffer[-2].reward += reward
+					qmix_buffer[-2].reward = reward
 					qmix_buffer[-2].done &= done
 				
 				obs = torch.tensor(obs,dtype=torch.float32,device=self.device).unsqueeze(0)
@@ -67,22 +79,26 @@ class QMixRunner:
 					action,hidden[agent] = self.qmix.get_action(agent,obs,hidden[agent])
 				buffer = agents_buffers[agent]
 				if buffer:
-					buffer[-1].next_obs = copy.deepcopy(obs)
-				buffer.append(AgentTransition(obs,action,None,all_obs[agent],len(all_obs[agent])))
+					buffer[-1].next_obs = obs
+				buffer.append(AgentTransition(obs,action or 0,None,all_obs[agent],len(all_obs[agent]),done,False))
 				self.env.step(action)
 
 				if render:
 					self.env.render()
 
-			if episode_id % self.net_sync_period == 0:
+			if train and episode_id % self.net_sync_period == 0:
 				self.qmix.sync_nets()
 			
 			qmix_buffer.pop()
-			for buffer in agents_buffers.values():
+			empty_obs = torch.zeros_like(obs)
+			empty_trans = AgentTransition(empty_obs,0,empty_obs,all_obs[agent],1,True,True)
+			for agent,buffer in agents_buffers.items():
 				buffer.pop()
+				for _ in range(episode_length-episode_lengths[agent]):
+					buffer.append(empty_trans)
 			
 
-			if len(qmix_buffer) >= self.batch_size:
+			if train and len(qmix_buffer) >= self.batch_size:
 				
 				agents,agents_buffers_list = zip(*list(agents_buffers.items()))
 				buffers = (qmix_buffer,*agents_buffers_list)
@@ -100,7 +116,7 @@ class QMix:
 		self.device = torch.device("cuda" if torch.cuda.is_available() and kwargs.get('use_gpu',default['use_gpu']) else "cpu")
 		print(f'Device: {self.device}')
 
-		agent_names = copy.copy(env.agents)
+		agent_names = [agent.name for agent in env.get_agents()]
 		self.n_actions = None
 		self.state_size = env.state_size
 
@@ -232,6 +248,9 @@ class QMix:
 			else:
 				obs =  torch.cat([trans.obs for trans in batch[agent]])
 			Q,hidden = net(obs)
+			is_dead = torch.BoolTensor([trans.dead for trans in batch[agent]])
+			Q[is_dead] = 0.0
+
 			hiddens_out[agent] = hidden
 			Qagents += [Q.unsqueeze(1)]
 		Qagents = torch.cat(Qagents,dim=1)
@@ -245,6 +264,8 @@ class QMix:
 			if self.rnn:
 				next_obs = next_obs.unsqueeze(0)
 			Q, _ = net(next_obs,hidden=hiddens_in[agent])
+			is_done = torch.BoolTensor([trans.done for trans in batch[agent]])
+			Q[is_done] = 0.0
 			Qagents += [Q.unsqueeze(1)]
 		Qagents = torch.cat(Qagents,dim=1)
 		return Qagents
@@ -355,12 +376,14 @@ class MixerTransition:
         return self.__str__()
 
 class AgentTransition:
-	def __init__(self,obs,action,next_obs,all_obs,index):
+	def __init__(self,obs,action,next_obs,all_obs,index,done,dead):
 		self.obs = obs
 		self.action = action
 		self.next_obs = next_obs
 		self.all_obs=all_obs
 		self.index=index
+		self.done=done
+		self.dead=dead
 
 	def __str__(self):
 		return 'AgentTransition('+str((self.obs,self.action,self.next_obs,self.index))+')'

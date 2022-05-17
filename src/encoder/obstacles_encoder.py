@@ -11,6 +11,8 @@ import pickle
 import os
 import cProfile
 import copy 
+import numpy as np
+import cv2 as cv
 
 def generate_dummy_obstacle(vis_grid):
 
@@ -23,62 +25,68 @@ def generate_dummy_obstacle(vis_grid):
     [x,y] = random.choice(vis_grid)
     return [x,y,idx]
 
-def generate_vis_grid(size):
+def generate_vis_grid(size,obs_len=2):
     visibility=size
     vis_grid = []
     for x in range(0,visibility+1):
         for y in range(0,visibility+1):
+            x2 = x**2
+            y2 = y**2
+            x3 = 2*x*math.pi/20
+            y3 = 2*y*math.pi/20
             if [x,y] != [0,0] and math.sqrt(x**2+y**2) <= visibility:
-                vis_grid.append([x,y])
+                vis_grid.append([x,y,x2,y2,x*y,math.sin(x3),math.sin(y3),
+                    math.sin(2*x3),math.sin(2*y3),math.sin(3*x3),math.sin(3*y3)][:obs_len])
                 if x:
-                    vis_grid.append([-x,y])
+                    vis_grid.append([-x,y,x2,y2,-x*y,-math.sin(x3),math.sin(y3),
+                        -math.sin(2*x3),math.sin(2*y3),math.sin(3*x3),math.sin(3*y3)][:obs_len])
                     if y:
-                        vis_grid.append([-x,-y])
+                        vis_grid.append([-x,-y,x2,y2,x*y,-math.sin(x3),-math.sin(y3),
+                            -math.sin(2*x3),-math.sin(2*y3),math.sin(3*x3),math.sin(3*y3)][:obs_len])
                 if y:
-                    vis_grid.append([x,-y])
+                    vis_grid.append([x,-y,x2,y2,-x*y,math.sin(x3),-math.sin(y3),
+                        math.sin(2*x3),-math.sin(2*y3),math.sin(3*x3),math.sin(3*y3)][:obs_len])
     return vis_grid
 
 def generate_sample(vis_grid,hidden_dict,max_length,device='cpu'):
 
     observation = []
     length = random.randrange(max_length+1)
-    # grid = copy.deepcopy(vis_grid)
-    grid = vis_grid
-    for _ in range(length):
-        # prev_grid = copy.deepcopy(grid)
-        prev_grid = grid
 
-        obs = random.choice(grid)
-        x,y = obs
-        observation.append(obs)
+    observation = random.sample(vis_grid,length)
+    # grid = vis_grid
+    # for _ in range(length):
+    #     # prev_grid = copy.deepcopy(grid)
+    #     prev_grid = grid
+
+    #     obs = random.choice(grid)
+    #     x,y = obs
+    #     observation.append(obs)
         
-        hiddens = [obs]
-        hiddens += hidden_dict[x,y]
-        # sz = 0
-        # for [x,y] in grid:
-        #     if hiddens[x][y]:
-        #         grid[sz] = [x,y]
-        #         sz += 1
-        # grid = grid[:sz]
+    #     hiddens = [obs]
+    #     hiddens += hidden_dict[x,y]
 
-        grid = [pos for pos in grid if pos not in hiddens]
+    #     grid = [pos for pos in grid if pos not in hiddens]
 
-        if not grid:
-            grid = prev_grid
-            observation.pop()
-            break
+    #     if not grid:
+    #         grid = prev_grid
+    #         observation.pop()
+    #         break
 
 
     length = len(observation)
     if length == 0:
-        observation.append([0,0])
+        observation.append([0,0,0,0,0,0,0,0,0])
         positive = random.choice(vis_grid)
         no_obstacle = True
     else:
         positive = random.choice(observation)
         no_obstacle = False
 
-    negative = random.choice(grid)
+    # negative = random.choice(grid)
+    negative = observation[0]
+    while negative  in observation:
+        negative = random.choice(vis_grid)
 
     positive = torch.tensor(positive,dtype=torch.float32,device=device)
     negative = torch.tensor(negative,dtype=torch.float32,device=device)
@@ -132,7 +140,7 @@ def main():
     load_model = config['load_model']
     save_period = config['save_period']
 
-    obs_length = 2
+    obs_length = config['input_size']
 
     if load_model:
         encoder = torch.load(netfile+'encoder.pk')
@@ -147,7 +155,7 @@ def main():
     if not load_model and save_model:
         input(f'A new model will be created and saved in {netfile}.\nPress enter to continue.')
     
-    vis_grid = generate_vis_grid(visibility)
+    vis_grid = generate_vis_grid(visibility,obs_len=obs_length)
     loss_f = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(list(encoder.parameters())+list(decoder.parameters()),lr=learning_rate)
     if use_writer:
@@ -197,7 +205,84 @@ def main():
     if use_writer:
         writer.close()
 
+
+def test():
+
+    TN = [0,50,0]
+    FP = [0,0,50]
+    TP = [0,255,0]
+    FN = [0,0,255]
+
+    config_id = sys.argv[1]
+    config_id = f'obs{config_id}'
+    print(f'Config: {config_id}.yml')
+    with open(f'configs/{config_id}.yml','r') as file:
+        config = yaml.safe_load(file)
+
+    netfile = f'nets/{config_id}/'
+    device = 'cpu'
+    print(f'Device: {device}')
+
+    visibility = config['visibility']
+    max_obs = config['max_obs']
+    input_size = config['input_size']
+
+    vis_grid = generate_vis_grid(visibility,obs_len=input_size)
+    encoder = torch.load(netfile+'encoder.pk')
+    decoder = torch.load(netfile+'decoder.pk')
+    encoder = encoder.to('cpu')
+    decoder = decoder.to('cpu')
+    encoder.train()
+    decoder.train()
+
+    seq,_,_,_ = generate_sample(vis_grid,None,max_obs,device='cpu')
+    seqs = [seq for _ in range(len(vis_grid))]
+    encoded_seqs,_ = encoder(seqs)
+    seq = seq.numpy()
+
+    print(len(seq))
+    length = 0 if np.array_equal(seq,np.array([[0for _ in range(config['input_size'])]]))  else len(seq)
+
+    test_data = vis_grid
+    test_data = torch.tensor(test_data,dtype=torch.float32)
+    
+    predictions = decoder.predict(encoded_seqs,test_data,threshold=0).detach().flatten().numpy()
+    test_data = test_data.numpy()
+    
+    image = np.full((2*visibility+1,2*visibility+1,3),[0,0,0],dtype=np.uint8)
+    image[visibility,visibility,:] = [255,255,255]
+
+    for i in range(len(vis_grid)):
+        test = test_data[i,:]
+
+        pred = predictions[i]
+        test_in_seq = any([all(test==foe) for foe in seq])
+
+        x = int(test[0]) + visibility
+        y = int(test[1]) + visibility
+
+        if test_in_seq:
+            if pred:
+                image[x,y,:] = TP
+            else:
+                image[x,y,:] = FN
+        else:
+            if pred:
+                image[x,y,:] = FP
+            else:
+                image[x,y,:] = TN
+
+                    
+    image = cv.resize(image,(480,480),interpolation=cv.INTER_NEAREST)
+    # cv.imshow('image',image)
+    # cv.waitKey(0)             
+    cv.imwrite(f'tests/{config_id}/{length}obs.png', image) 
+
 if __name__ == '__main__':
     
-    cProfile.run('main()')
-    # main()
+    # cProfile.run('main()')
+    if len(sys.argv) > 2 and sys.argv[2] == '--test':
+        for _ in range(100):
+            test()
+    else:
+        main()

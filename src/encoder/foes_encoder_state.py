@@ -8,6 +8,8 @@ from torch import nn,optim
 from tensorboardX import SummaryWriter
 import time
 import sys
+import numpy as np
+import cv2 as cv
 
 def generate_dummy_foe(vis_grid,idx=0):
 
@@ -41,7 +43,7 @@ def generate_sample(vis_grid,max_length,max_id,device='cpu'):
         positions.append(pos)
 
     if length == 0:
-        observation.append([0,0,-1])
+        observation.append([-10,-10,-1])
         positive = observation[0]
         r = random.random()
         while positive in observation:
@@ -87,7 +89,7 @@ def generate_batch(vis_grid,max_length,max_id,batch_size,device='cpu'):
     no_agents_mask = torch.BoolTensor(no_agents_mask)
     return observations, positives, negatives, no_agents_mask
 
-if __name__ == '__main__':
+def main():
 
     config_id = sys.argv[1]
 
@@ -186,3 +188,88 @@ if __name__ == '__main__':
 
     if use_writer:
         writer.close()
+
+
+
+def test():
+
+    TN = [0,50,0]
+    FP = [0,0,50]
+    TP = [0,255,0]
+    FN = [0,0,255]
+
+    config_id = sys.argv[1]
+    config_id = f'foes_state{config_id}'
+    print(f'Config: {config_id}.yml')
+    with open(f'configs/{config_id}.yml','r') as file:
+        config = yaml.safe_load(file)
+
+    netfile = f'nets/{config_id}/'
+    device = 'cpu'
+    print(f'Device: {device}')
+
+    size = config['size']
+    max_id = config['max_id']
+    max_foes = config['max_foes']
+
+    vis_grid = generate_vis_grid(size)
+    encoder = torch.load(netfile+'encoder.pk')
+    decoder = torch.load(netfile+'decoder.pk')
+    encoder = encoder.to('cpu')
+    decoder = decoder.to('cpu')
+    encoder.train()
+    decoder.train()
+
+    seq,_,_,_ = generate_sample(vis_grid,max_foes,max_id,device='cpu')
+    seqs = [seq for _ in range(len(vis_grid))]
+    encoded_seqs,_ = encoder(seqs)
+    seq = seq.numpy()
+
+    print(seq)
+    length = 0 if np.array_equal(seq,np.array([[-10,-10,-1]]))  else len(seq)
+
+    for idx in range(max_id+1):
+
+        test_data = [coords + [idx] for coords in vis_grid]
+        test_data = torch.tensor(test_data,dtype=torch.float32)
+        
+        predictions = decoder.predict(encoded_seqs,test_data).detach().flatten().numpy()
+        test_data = test_data.numpy()
+        
+        image = np.full((size+2,size+2,3),[0,0,0],dtype=np.uint8)
+        image[size,size,:] = [255,255,255]
+
+        for i in range(len(vis_grid)):
+            test = test_data[i,:]
+
+            pred = int(round(predictions[i]))
+            test_in_seq = any([all(test==foe) for foe in seq])
+            test = test_data[i,:]
+
+            x = int(test[0]) + 1
+            y = int(test[1]) + 1
+
+            if test_in_seq:
+                if pred:
+                    image[x,y,:] = TP
+                else:
+                    image[x,y,:] = FN
+            else:
+                if pred:
+                    image[x,y,:] = FP
+                else:
+                    image[x,y,:] = TN
+
+                    
+        image = cv.resize(image,(480,480),interpolation=cv.INTER_NEAREST)
+        # cv.imshow('image',image)
+        # cv.waitKey(0)             
+        cv.imwrite(f'tests/{config_id}/{length}tanks//id={idx}.png', image) 
+
+
+
+if __name__ == '__main__':
+    if len(sys.argv) > 2 and sys.argv[2] == '--test':
+        test()
+    else:
+        main()

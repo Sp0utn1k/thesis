@@ -136,9 +136,9 @@ class DecoderNN(nn.Module):
 		data = torch.cat([data,x],dim=1)
 		return self.pipe(data)
 
-	def predict(self,data,x):
+	def predict(self,data,x, threshold=0):
 		data = torch.cat([data,x],dim=1)
-		return torch.round(self.sigmoid(self.pipe(data)))
+		return self.pipe(data) > threshold
 
 
 class FCNetwork(nn.Module):

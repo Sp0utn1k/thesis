@@ -57,8 +57,9 @@ class Agent:
 		self.epsilon = max(self.eps_min,epsilon)
 
 	def get_action(self,state,hidden):
+		state = torch.tensor(state,device=self.device,dtype=torch.float32).unsqueeze(0)
 		if self.n_actions == None:
-			q_values,_ = self.net(state.to(self.device))
+			q_values,_ = self.net(state)
 			self.n_actions = q_values.size(-1)
 		assert(state.shape[0] == 1)
 		with torch.no_grad():
@@ -69,7 +70,7 @@ class Agent:
 			action = Qvalues.cpu().squeeze().argmax().numpy()
 		return int(action), next_hidden
 
-	def train_net(self,batch,benchmark=False):
+	def train_net(self,batch,benchmark=False,raw_mode=False):
 
 		if benchmark:
 			timer = [0,0]
@@ -78,20 +79,22 @@ class Agent:
 		device = self.device
 		action = torch.tensor([episode.action for episode in batch],device=device)
 		reward = torch.tensor([episode.reward for episode in batch],device=device)
-		next_state = torch.cat([episode.next_state for episode in batch])
+		next_state = torch.tensor([episode.next_state for episode in batch],device=device,dtype=torch.float32)
 		done = torch.BoolTensor([episode.done for episode in batch])
 
 		if self.rnn:
 			if self.max_depth:
 				all_states = [
-				torch.stack(episode.all_states[max(0,episode.index-self.max_depth):episode.index]).squeeze(1) for episode in batch]
+				torch.tensor(episode.all_states[max(0,episode.index-self.max_depth):episode.index],
+					device=device,dtype=torch.float32).squeeze(1) for episode in batch]
 			else:
-				all_states = [torch.stack(episode.all_states[:episode.index]).squeeze(1) for episode in batch]
+				all_states = [torch.tensor(episode.all_states[:episode.index],device=device,dtype=torch.float32).squeeze(1) 
+								for episode in batch]
 			next_state = next_state.unsqueeze(0)
 			states = all_states
 
 		else:
-			state = torch.cat([episode.state for episode in batch])
+			state = torch.tensor([episode.state for episode in batch],device=device,dtype=torch.float32)
 			states = state
 
 
@@ -171,7 +174,7 @@ class DQNRunner:
 			
 			hidden = agent.init_hidden()
 			total_reward = 0.0
-			state = torch.tensor(env.reset(),device=self.device,dtype=torch.float32).unsqueeze(0)
+			state = env.reset()
 			done = False
 			episode_length = 0.0
 			all_states = []
@@ -181,11 +184,11 @@ class DQNRunner:
 					agent.set_epsilon(episode_id)
 				action, hidden = agent.get_action(state,hidden)
 				next_state, reward, done, _ = env.step(action)
-				next_state = torch.tensor(next_state,device=self.device,dtype=torch.float32).unsqueeze(0)
+				next_state = next_state
 				all_states.append(state)
 				episode = Episode(state,action,reward,next_state,done,all_states,len(all_states))
 				self.buffer.append(episode)
-				state = copy.deepcopy(next_state)
+				state = next_state
 				total_reward += reward
 				if render:
 					env.render()
