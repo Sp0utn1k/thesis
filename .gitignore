@@ -3,3 +3,4 @@ __pycache__
 algorithms/__pycache__/
 runs/
 data
+agents_vs_agents_runs/
