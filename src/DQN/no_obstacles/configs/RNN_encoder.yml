@@ -2,10 +2,10 @@
 
 batch_size : 128
 buffer_size : 50000
-n_episodes : 100000
+n_episodes : 200000
 lr : 0.0003
 
-epsilon_decay: {'period': 100000,
+epsilon_decay: {'period': 200000,
 'start': 1,
 'stop': .05,
 'shape': 'exponential'}

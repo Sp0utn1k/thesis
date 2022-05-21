@@ -27,10 +27,14 @@ def tflog2pandas(path):
 
 if __name__ == '__main__':
 
-    for logname in os.listdir('runs'):
+    logdir = 'runs'
+    if len(sys.argv) > 1:
+        logdir = sys.argv[1]
+
+    for logname in os.listdir(logdir):
         print(logname)
-        logdir = os.path.join('runs',logname)
-        logdir = os.path.join(logdir,os.listdir(logdir)[-1])
-        df=tflog2pandas(logdir)
+        logfile = os.path.join(logdir,logname)
+        logfile = os.path.join(logfile,os.listdir(logfile)[-1])
+        df=tflog2pandas(logfile)
         #df=df[(df.metric != 'params/lr')&(df.metric != 'params/mm')&(df.metric != 'train/loss')] #delete the mentioned rows
         df.to_excel(f"../../../data/{logname}.xlsx")

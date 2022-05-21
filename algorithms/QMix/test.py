@@ -17,14 +17,13 @@ if __name__ == '__main__':
     # writer = SummaryWriter()
     
     for episode,episode_length,reward,loss in runner.run(N_episodes):
+        print(loss)
         # if loss != None:
             # writer.add_scalar('loss',loss,episode)
         # if episode % 1000 == 0:
             # print(f'{episode}')
         continue
     # writer.close()
-
-
 
     qmix.epsilon = 0
     for episode,episode_length,reward,loss in runner.run(1):
@@ -51,8 +50,6 @@ if __name__ == '__main__':
     Q2 = Q2.gather(1,actions2)
     Q = torch.cat([Q1,Q2],dim=1)
     print(qmix.mixer(Q,state).detach().cpu())
-
-
 
     # State 2A
     actions1 = torch.tensor([0,0,1,1],device=qmix.device).unsqueeze(-1)

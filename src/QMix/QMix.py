@@ -3,8 +3,9 @@ from tanksEnv.algorithms import QMix
 from tanksEnv.utils.networks import FCNetwork,RNNetwork
 from tensorboardX import SummaryWriter
 import yaml
-import sys
+import os,sys
 import cProfile
+import time
 
 def main():
 	
@@ -22,9 +23,23 @@ def main():
 	qmix = QMix.QMix(env,agent_net,**config)
 	runner = QMix.QMixRunner(env,qmix,**config)
 
+	timestr = time.strftime('%Y_%m_%d-%Hh%M')
+	if config['use_mixer']:
+		writer_name = 'QMix'
+	else:
+		writer_name = 'VDN'
+
+	if qmix.rnn:
+		writer_name += '_RNN'
+	else:
+		writer_name += '_FC'
+
+	if env_params['observation_mode'] == 'encoded':
+		writer_name += '_encoder'
+
 	use_writer = config.get('use_writer',False)
 	if use_writer:
-		writer = SummaryWriter()
+		writer = SummaryWriter(os.path.join('runs',writer_name,timestr))
 	for episode,episode_length,reward,loss in runner.run(config['n_episodes']):
 		if use_writer:
 			writer.add_scalar('Reward',reward,episode)
@@ -32,9 +47,11 @@ def main():
 			if loss != None:
 				writer.add_scalar('Loss',loss,episode)
 
+
+	env.reset()
 	input('Press enter to show demo')
-	for episode,episode_length,reward,loss in runner.run(10,render=True,train=False):
-		pass
+	for episode,episode_length,reward,loss in runner.run(5,render=True,train=False):
+		print('Reward ',reward)
 	writer.close()
 
 if __name__ == '__main__':

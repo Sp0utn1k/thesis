@@ -1,10 +1,20 @@
 import numpy as np
 import random
 
+class Agent():
+	def __init__(self,name):
+		self.name = name
+
+	def __str__(self):
+		return self.name
+
+	def __repr__(self):
+		return self.__str__()
+
 class Environment:
 
 	def __init__(self):
-		self.agents = ['agent0','agent1']
+		self.agents = [Agent('agent0'),Agent('agent1')]
 		self.n_actions = 2
 		self.obs_size = 2
 		self.state_size = 2*self.obs_size
@@ -15,12 +25,15 @@ class Environment:
 		self.cycles = {agent:0 for agent in self.agents}
 		self.coord = [-1,-1]
 
+	def get_agents(self):
+		return self.agents
+
 	def get_obs(self,agent):
 		# if self.cycle > 1:
 		# 	return None
 		cycle = self.cycles[agent]
 		obs = self.state2 if cycle else -1
-		return np.array([cycle*self.state2-(cycle==0),int(agent[-1])])
+		return np.array([cycle*self.state2-(cycle==0),int(agent.name[-1])])
 
 	def get_state(self):
 		state = []
@@ -66,18 +79,19 @@ class Environment:
 			reward =  matrix[tuple(self.coord)]
 		else:
 			reward = 7
-		return reward/2
+		return reward
 
 	def agent_iter(self):
 		done_agents = []
 		while len(done_agents) != len(self.agents):
 			for agent in self.agents:
+				first_agent = agent == self.agents[0]
 				self.current_agent = agent
 				if not self.is_done(self.current_agent):
-					yield agent
+					yield agent, first_agent
 				elif agent not in done_agents:
 					done_agents.append(agent)
-					yield agent
+					yield agent, first_agent
 
 	@property
 	def cycle(self):

@@ -4,10 +4,10 @@ from tanksEnv.utils.networks import RNNetwork, FCNetwork
 from tanksEnv.algorithms.DQN import Agent, DQNRunner 
 from tensorboardX import SummaryWriter
 import time
-import sys
+import os, sys
+import cProfile
 
-
-if __name__ == "__main__":
+def main():
 
 	DQN_mode = sys.argv[1]
 	assert DQN_mode in ['classical','RNN','RNN_encoder','encoder'], 'Unknown DQN mode.'
@@ -48,6 +48,22 @@ if __name__ == "__main__":
 			writer.add_scalar('loss',loss,episode)
 	writer.close()
 
-	input('Press enter to show demo')
-	for (episode,episode_length,reward,loss) in runner.run(10,render=True,train=False):
-		print(f'Reward: {reward}')
+
+	rewards = []
+	for (episode,episode_length,reward,loss) in runner.run(100,render=False,train=False):
+		rewards.append(reward)
+
+
+	filename = os.path.join('test_data',DQN_mode)
+	with open(filename, 'a') as f:
+		f.write(str(rewards))
+		f.write('\n\n')
+
+	# input('Press enter to show demo')
+	# for (episode,episode_length,reward,loss) in runner.run(10,render=True,train=False):
+	# 	print(f'Reward: {reward}')
+
+
+
+if __name__ == "__main__":
+	cProfile.run('main()')

@@ -2,10 +2,10 @@
 
 batch_size : 128
 buffer_size : 50000
-n_episodes : 100000
+n_episodes : 50000
 lr : 0.0003
 
-epsilon_decay: {'period': 100000,
+epsilon_decay: {'period': 50000,
 'start': 1,
 'stop': .05,
 'shape': 'exponential'}
@@ -15,7 +15,7 @@ net_sync_period : 25
 use_gpu: true
 
 ########## ENVIRONMENT PARAMETERS ##########
-size : [30,10]
+size : [10,10]
 agents_description : [
 {'pos0': 'random','team': 'blue'},
 {'pos0': 'random','team': 'red','policy': 'random'}
@@ -23,18 +23,10 @@ agents_description : [
 N_aim: 5 
 visibility: 12
 R50: 7
-max_cycles: 40
+max_cycles: 25
 render: false
 ammo: 5
 observation_mode: 'encoded'
-
-# obstacles: [[4,2],[5,2],
-#             [4,3],[5,3],
-#             [4,4],[5,4],
-#             [4,5],[5,5],
-#             [4,6],[5,6],
-#             [4,7],[5,7],
-#             [4,8],[5,8],]
 
 ########## AGENT PARAMETERS ##########
 hidden_layers: [64,64] 

@@ -4,7 +4,7 @@ import copy
 import math
 import random
 from collections import deque
-from tanksEnv.utils.functionnal import is_rnn
+from tanksEnv.utils.functionnal import is_rnn, weights_init_uniform
 import time
 
 default = {
@@ -36,6 +36,8 @@ class QMixRunner:
 		qmix_buffer = deque(maxlen=self.buffer_size)
 		agents_buffers = {agent.name:deque(maxlen=self.buffer_size) for agent in self.env.get_agents()}
 
+		# qmix_buffer_test = []
+		# agents_buffers_test = {agent.name:[] for agent in self.env.get_agents()}
 		if not train:
 			# agent.net.eval()
 			for agent in self.env.agents:
@@ -61,14 +63,19 @@ class QMixRunner:
 						self.qmix.set_epsilon(episode_id)
 					state = torch.tensor(self.env.get_state(),dtype=torch.float32,device=self.device).unsqueeze(0)
 					if episode_length > 1:
-						qmix_buffer[-1].next_state = copy.deepcopy(state)
+						qmix_buffer[-1].next_state = state
+						# qmix_buffer_test[-1][2] = len(qmix_buffer_test)
 					qmix_buffer.append(MixerTransition(state,0,None,True))
+					# qmix_buffer_test.append([len(qmix_buffer_test),0,None,True])
 
 				obs,reward,done,_ = self.env.last()
-				total_reward = reward
+				if first_agent:
+					total_reward += reward
 				if episode_length > 1:
 					qmix_buffer[-2].reward = reward
 					qmix_buffer[-2].done &= done
+					# qmix_buffer_test[-2][1] = reward
+					# qmix_buffer_test[-2][3] &= done
 				
 				obs = torch.tensor(obs,dtype=torch.float32,device=self.device).unsqueeze(0)
 				if self.qmix.rnn:
@@ -78,10 +85,15 @@ class QMixRunner:
 				else:
 					action,hidden[agent] = self.qmix.get_action(agent,obs,hidden[agent])
 				buffer = agents_buffers[agent]
+				# buffer_test = agents_buffers_test[agent]
 				if buffer:
 					buffer[-1].next_obs = obs
+					# buffer[-1].done = done
+					# buffer_test[-1][2] = len(buffer_test)
+					# buffer_test[-1][3] = done
 				buffer.append(AgentTransition(obs,action or 0,None,all_obs[agent],len(all_obs[agent]),done,False))
-				self.env.step(action)
+				# buffer_test.append([len(buffer_test),action or 0, None,None,False])
+				self.env.step(action,prompt_action=render)
 
 				if render:
 					self.env.render()
@@ -90,13 +102,22 @@ class QMixRunner:
 				self.qmix.sync_nets()
 			
 			qmix_buffer.pop()
+			# qmix_buffer_test.pop()
+			# empty_trans_test = [0,0,0,True,True]
 			empty_obs = torch.zeros_like(obs)
 			empty_trans = AgentTransition(empty_obs,0,empty_obs,all_obs[agent],1,True,True)
 			for agent,buffer in agents_buffers.items():
 				buffer.pop()
+				# agents_buffers_test[agent].pop()
+				last_trans = buffer[-1]
 				for _ in range(episode_length-episode_lengths[agent]):
-					buffer.append(empty_trans)
-			
+					buffer.append(last_trans)
+					# agents_buffers_test[agent].append(empty_trans_test)
+				# buffer[-1] = last_trans
+
+			# print('\n'*3,qmix_buffer_test)
+			# for agent,buffer_test in agents_buffers_test.items():
+			# 	print('\n',agent,'\n',buffer_test)
 
 			if train and len(qmix_buffer) >= self.batch_size:
 				
@@ -135,7 +156,7 @@ class QMix:
 			network = network.to(self.device)
 			self.agents = {agent_name:network for agent_name in agent_names}
 		else:
-			assert isinstance(network,dict) and list(network.keys()) == agent_names, 'Not valid networks for DQN agents'
+			assert isinstance(network,dict) and list(network.keys()) == agent_names, 'Not valid Q-Networks dict.'
 			self.agents = network
 		for agent_name,net in self.agents.items():
 			if not unique_net:
@@ -323,6 +344,10 @@ class Mixer(nn.Module):
 					nn.Linear(state_space,1))
 		
 		self.ELU = nn.ELU()
+
+
+		# weights_init_uniform(self,1e-10)
+		# weights_init_uniform(self.B2,1e-10)
 
 	def forward(self,Qagents,state):
 

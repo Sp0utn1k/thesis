@@ -15,7 +15,7 @@ default = {'agents_description':[{'pos0':[0,0],'team': 'blue'},
 			'visibility':4,
 			'R50':3,
 			'obstacles':[],
-			'borders_in_obstacles':True,
+			'borders_in_obstacles':False,
 			'add_graphics':True,
 			'N_aim':2,
 			'fps':2,
@@ -169,6 +169,14 @@ class Environment:
 		self.n_blue = len(self.blue_agents)
 		return self.get_observation()
 
+	def get_aim_id(self,agent):
+		aim = self.aim.get(agent,None)
+		if aim == None:
+			aim = -1
+		else:
+			aim = aim.id
+		return aim
+
 	def get_observation(self):
 
 		agent = self.current_agent
@@ -184,7 +192,7 @@ class Environment:
 
 		foes = [substract(self.positions[p],pos)+[p.id] for p in other_team 
 				if self.is_visible(pos,self.positions[p]) and pos != self.positions[p]]
-		friends = [substract(self.positions[p],pos)+[p.id]+[self.ammo[p]] for p in team
+		friends = [substract(self.positions[p],pos)+[p.id]+[self.get_aim_id(p)] for p in team
 				if self.is_visible(pos,self.positions[p]) and pos != self.positions[p]]
 
 		obstacles = [substract(obs,pos) for obs in self.obstacles if self.is_visible(pos,obs)]
@@ -233,7 +241,7 @@ class Environment:
 				observation += list(obstacles)
 			if self.MA:
 				while len(friends) < n_team:
-					foes.append([0,0,-100,0])
+					friends.append([0,0,-100,0])
 				friends = np.array(friends).flatten()
 				observation += list(friends)
 
@@ -258,7 +266,8 @@ class Environment:
 		for p in team:
 			friend = copy.copy(self.positions[p])
 			friend.append(p.id)
-			friend.append(self.ammo[p])
+			aim = self.get_aim_id(p)
+			friend.append(aim)
 			# aim = self.aim.get(p,None)
 			# if aim == None:
 			# 	aim = -1
@@ -270,12 +279,12 @@ class Environment:
 		obstacles = copy.copy(self.obstacles)
 
 		if not foes:
-			foes = [[-10,-10,-100]]
+			foes = [[-1,-1,-1]]
 		if not friends:
-			friends = [[-10,-10,-100,-1]]
+			friends = [[-1,-1,-1,-1]]
 
 		if not obstacles:
-			obstacles = [[-10,-10]]
+			obstacles = [[-1,-1]]
 		
 		if self.observation_mode == 'encoded':
 			with torch.no_grad():
@@ -289,12 +298,12 @@ class Environment:
 
 		elif self.observation_mode == 'array':
 			while len(foes) < n_others:
-				foes.append([0,0,-1])
+				foes.append([-1,-1,-1])
 			foes = np.array(foes).flatten()
 			observation = list(foes)
 			if self.MA:
 				while len(friends) < n_team:
-					foes.append([0,0,-1,0])
+					friends.append([-1,-1,-1,-1])
 				friends = np.array(friends).flatten()
 				observation += list(friends)
 
@@ -419,6 +428,7 @@ class Environment:
 		return obs,R,done,info
 
 	def play_red_agents(self):
+		self.update_agents()
 		prev_current = self.current_agent
 		for agent in self.red_agents:
 			self.current_agent = agent
@@ -436,6 +446,8 @@ class Environment:
 				self.action(action)
 			else:
 				raise AttributeError(f'Policy "{agent.policy}"" is not supported for red agents.')
+			self.cycle[agent] += 1
+
 		self.current_agent = prev_current
 
 	def step(self,action,prompt_action=False):
@@ -446,11 +458,11 @@ class Environment:
 
 		agent = self.current_agent
 		self.action(action)
-		self.cycle[agent] += 1
 		if prompt_action:
-			print(f'Agent {agent.id} takes action "{self.action_names[action]}".')
+			print(f'{agent}": {self.action_names[action]}".')
 
 		if not self.MA:
+			self.cycle[agent] += 1
 			self.play_red_agents()
 			self.update_agents()
 			R = self.get_reward()
@@ -458,21 +470,23 @@ class Environment:
 			done = self.is_done()
 			info = None
 			return obs, R, done, info
-		else:
-			return
+
 
 	def get_random_action(self):
 		return np.random.choice(list(self.action_names.keys()))
 
 	def agent_iter(self):
 		done_agents = []
-		user_agents = len([agent for agent in self.agents if agent.policy == 'user'])
-		while len(done_agents) < user_agents:
-			for i,agent in enumerate(self.agents):
+		all_agents = copy.copy(self.agents)
+		while len(done_agents) < len(all_agents):
+			first_agent = True
+			for agent in all_agents:
 				self.current_agent = agent
+				self.cycle[agent] += 1
 				if not self.is_done():
 					if agent.policy == 'user':
-						yield agent, not i
+						yield agent, first_agent
+						first_agent = False
 					elif agent.policy == None:
 						continue
 					elif agent.policy == 'random':
@@ -481,17 +495,21 @@ class Environment:
 						action = np.random.choice(available_actions)
 						self.action(action)
 
-				elif agent not in done_agents and agent.policy == 'user':
+				elif agent not in done_agents:
 					done_agents.append(agent)
-					yield agent, not i
+					if agent.policy == 'user':
+						yield agent, first_agent
+						first_agent = False
 					
-		for agent in self.agents:
+		first_agent = True
+		for agent in all_agents:
 			if agent not in done_agents and agent.policy == 'user':
-				yield agent
+				yield agent, first_agent
+				first_agent = False
 
 	def update_agents(self):
-		if not self.MA:
-			self.agents = [p for p in self.agents if self.alive[p]]
+		
+		self.agents = [p for p in self.agents if self.alive[p]]
 		# np.random.shuffle(self.agents)
 		self.red_agents = [p for p in self.agents if p.team=="red" and self.alive[p] and self.ammo[p]]
 		self.blue_agents = [p for p in self.agents if p.team=="blue" and self.alive[p] and self.ammo[p]]
@@ -552,6 +570,7 @@ class Environment:
 		return False
 
 	def render(self,twait=-1,save_image=False,filename='render.png'):
+		self.update_agents()
 		if twait == -1:
 			twait = self.twait
 
@@ -574,6 +593,7 @@ class Environment:
 		# cv.destroyAllWindows()
 
 	def render_fpv(self,agent,twait=-1,save_image=False,filename='render_fpv.png'):
+		self.update_agents()
 		if twait == -1:
 			twait = self.twait
 

@@ -23,3 +23,12 @@ def build_network(input_size,output_size,layers):
 
 def squash_packed(x, fn):
 	return PackedSequence(fn(x.data),x.batch_sizes,x.sorted_indices,x.unsorted_indices)
+
+
+def weights_init_uniform(m,std):
+    classname = m.__class__.__name__
+    # for every Linear layer in a model..
+    if classname.find('Linear') != -1:
+        # apply a uniform distribution to the weights and a bias=0
+        m.weight.data.uniform_(0.0, std)
+        # m.bias.data.fill_(0)
