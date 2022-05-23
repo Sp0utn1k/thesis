@@ -1,13 +1,13 @@
 ########## LEARNING PARAMETERS ##########
 
 batch_size : 128
-buffer_size : 50000
-n_episodes : 200000
-lr : 0.0003
+buffer_size : 200000
+n_episodes : 50000
+lr : 0.001
 
-epsilon_decay: {'period': 200000,
+epsilon_decay: {'period': 50000,
 'start': 1,
-'stop': .05,
+'stop': .02,
 'shape': 'exponential'}
 
 gamma : .9
@@ -15,7 +15,7 @@ net_sync_period : 25
 use_gpu: true
 
 ########## ENVIRONMENT PARAMETERS ##########
-size : [30,10]
+size : [10,10]
 agents_description : [
 {'pos0': 'random','team': 'blue'},
 {'pos0': 'random','team': 'red','policy': 'random'}
@@ -23,8 +23,9 @@ agents_description : [
 N_aim: 5 
 visibility: 12
 R50: 7
-max_cycles: 40
+max_cycles: 25
 render: false
+random_ids: True
 ammo: 5
 observation_mode: 'array'
 

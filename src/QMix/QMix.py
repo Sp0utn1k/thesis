@@ -19,7 +19,12 @@ def main():
 	config_id = sys.argv[1]
 	with open(f'./configs/config{config_id}.yml','r') as file:
 		config= yaml.safe_load(file)
-	agent_net = FCNetwork(env.obs_size,n_actions,**config)
+
+	if config.get('RNN',False):
+		agent_net = RNNetwork(env.obs_size,n_actions,**config)
+	else:
+		agent_net = FCNetwork(env.obs_size,n_actions,**config)
+
 	qmix = QMix.QMix(env,agent_net,**config)
 	runner = QMix.QMixRunner(env,qmix,**config)
 
@@ -34,7 +39,7 @@ def main():
 	else:
 		writer_name += '_FC'
 
-	if env_params['observation_mode'] == 'encoded':
+	if config['observation_mode'] == 'encoded':
 		writer_name += '_encoder'
 
 	use_writer = config.get('use_writer',False)
@@ -47,6 +52,16 @@ def main():
 			if loss != None:
 				writer.add_scalar('Loss',loss,episode)
 
+	env.reset()
+
+	rewards = []
+	for (episode,episode_length,reward,loss) in runner.run(100,render=False,train=False):
+		rewards.append(reward)
+
+	filename = os.path.join('test_data',writer_name)
+	with open(filename, 'a') as f:
+		f.write(str(rewards))
+		f.write('\n;\n')
 
 	env.reset()
 	input('Press enter to show demo')

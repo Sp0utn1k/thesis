@@ -4,7 +4,7 @@ from tanksEnv.utils.networks import RNNetwork, FCNetwork
 from tanksEnv.algorithms.DQN import Agent, DQNRunner 
 from tensorboardX import SummaryWriter
 import time
-import sys
+import os,sys
 import cProfile
 
 def main():
@@ -16,46 +16,59 @@ def main():
 
 	with open(f'./configs/{DQN_mode1}.yml','r') as file:
 		settings1 = yaml.safe_load(file)
-	with open(f'./configs/{DQN_mode1}.yml','r') as file:
+	with open(f'./configs/{DQN_mode2}.yml','r') as file:
 		settings2 = yaml.safe_load(file)
 	with open(f'./configs/agent_vs_agent.yml','r') as file:
 		main_settings = yaml.safe_load(file)
 
-	settings1['agents_description'] = [{'pos0': 'random','team': 'blue'},
-				{'pos0': 'random','team': 'red','policy': 'smart_agent'}] 
 
-	env = tanksEnv.Environment(**settings1)
-	S = env.reset()
+	for key in settings1.keys():
+		settings1[key] = main_settings.get(key,settings1[key])
+
+	for key in settings2.keys():
+		settings2[key] = main_settings.get(key,settings2[key])
+
+	for key,val in main_settings.items():
+		settings1[key] = val
+		settings2[key] = val
+
+	env1 = tanksEnv.Environment(**settings1)
+	S = env1.reset()
 	obs_size = len(S)
-	n_actions = env.n_actions
+	n_actions = env1.n_actions
 
 	if 'RNN' in DQN_mode1:
 		agent_net1 = RNNetwork(obs_size,n_actions,**settings1)
 	else:
 		agent_net1 = FCNetwork(obs_size,n_actions,**settings1)
 	agent1 = Agent(network=agent_net1,**settings1)
-	runner1 = DQNRunner(env,agent1,**settings1)
+	runner1 = DQNRunner(env1,agent1,**settings1)
 
 
-	if 'RNN' in DQN_mode1:
+	env2 = tanksEnv.Environment(**settings2)
+	S = env2.reset()
+	obs_size = len(S)
+	n_actions = env2.n_actions
+	if 'RNN' in DQN_mode2:
 		agent_net2 = RNNetwork(obs_size,n_actions,**settings2)
 	else:
 		agent_net2 = FCNetwork(obs_size,n_actions,**settings2)
 	agent2 = Agent(network=agent_net2,**settings2)
-	runner2 = DQNRunner(env,agent2,**settings2)
+	runner2 = DQNRunner(env2,agent2,**settings2)
+
+	env1.red_agent = agent2
+	env1.red_observation_mode = settings2['observation_mode']
+	env2.red_agent = agent1
+	env2.red_observation_mode = settings1['observation_mode']
 
 	timestr = time.strftime('%Y_%m_%d-%Hh%M')
 	writer = SummaryWriter(f'agents_vs_agents_runs/{DQN_mode1}_vs_{DQN_mode2}/'+timestr)
 	
-
 	swap_freq = main_settings['swap_freq']
 	N_runs = settings1['n_episodes']//swap_freq
 
 	for run_x in range(N_runs):
-		env.red_agent = agent2
-		env.observation_mode = settings1['observation_mode']
-		env.red_observation_mode = settings2['observation_mode']
-		# agent2.epsilon = 0
+
 		agent2.net.eval()
 		agent1.net.train()
 
@@ -67,10 +80,7 @@ def main():
 			if loss != None:
 				writer.add_scalar('loss1',loss,corrected_episode)
 
-		env.red_agent = agent1
-		env.observation_mode = settings2['observation_mode']
-		env.red_observation_mode = settings1['observation_mode']
-		# agent1.epsilon = 0
+		
 		agent1.net.eval()
 		agent2.net.train()
 
@@ -86,21 +96,28 @@ def main():
 	
 	writer.close()
 
-	env.red_agent = agent2
-	env.observation_mode = settings1['observation_mode']
-	env.red_observation_mode = settings2['observation_mode']
-	agent1.epsilon = 0
-	agent2.epsilon = 0
+	
 	agent2.net.eval()
 	agent1.net.eval()
+
+	rewards1 = []
+	for (episode,episode_length,reward,loss) in runner1.run(100,render=False,train=False):
+		rewards1.append(reward)
+
+	rewards2 = []
+	for (episode,episode_length,reward,loss) in runner2.run(100,render=False,train=False):
+		rewards2.append(reward)
+
+	filename = os.path.join('test_data',f'{DQN_mode1}_vs_{DQN_mode2}')
+	with open(filename, 'a') as f:
+		f.write(str(rewards1))
+		f.write('\n')
+		f.write(str(rewards2))
+		f.write('\n\n')
 
 	input('Press enter to show demo1')
 	for (episode,episode_length,reward,loss) in runner1.run(5,render=True,train=False):
 		print(f'Reward: {reward}')
-
-	env.red_agent = agent1
-	env.observation_mode = settings2['observation_mode']
-	env.red_observation_mode = settings1['observation_mode']
 
 	input('Press enter to show demo2')
 	for (episode,episode_length,reward,loss) in runner2.run(5,render=True,train=False):

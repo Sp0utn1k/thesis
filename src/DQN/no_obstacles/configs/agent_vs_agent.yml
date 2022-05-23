@@ -1,1 +1,15 @@
 swap_freq: 100
+size: [20,10]
+max_cycles: 40
+buffer_size : 200000
+n_episodes: 200000
+epsilon_decay: {'period': 200000,
+'start': 1,
+'stop': .01,
+'shape': 'exponential'}
+random_ids: True
+
+agents_description : [
+{'pos0': 'random','team': 'blue'},
+{'pos0': 'random','team': 'red','policy': 'smart_agent'}
+] 

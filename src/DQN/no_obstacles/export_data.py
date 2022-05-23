@@ -27,14 +27,16 @@ def tflog2pandas(path):
 
 if __name__ == '__main__':
 
-    logdir = 'runs'
-    if len(sys.argv) > 1:
-        logdir = sys.argv[1]
+    logdir = 'runs_randid'
+    # if len(sys.argv) > 1:
+    #     logdir = sys.argv[1]
 
     for logname in os.listdir(logdir):
         print(logname)
-        logfile = os.path.join(logdir,logname)
-        logfile = os.path.join(logfile,os.listdir(logfile)[-1])
-        df=tflog2pandas(logfile)
-        #df=df[(df.metric != 'params/lr')&(df.metric != 'params/mm')&(df.metric != 'train/loss')] #delete the mentioned rows
-        df.to_excel(f"../../../data/{logname}.xlsx")
+        subfolder = os.path.join(logdir,logname)
+        for i,logfile in enumerate(os.listdir(subfolder)):
+            logfile = os.path.join(subfolder,os.listdir(subfolder)[i])
+            print(logfile)
+            df=tflog2pandas(logfile)
+            #df=df[(df.metric != 'params/lr')&(df.metric != 'params/mm')&(df.metric != 'train/loss')] #delete the mentioned rows
+            df.to_excel(f"../../../data/randid_{logname}{i}.xlsx")

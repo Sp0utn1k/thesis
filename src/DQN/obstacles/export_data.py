@@ -27,10 +27,15 @@ def tflog2pandas(path):
 
 if __name__ == '__main__':
 
-    for logname in os.listdir('runs'):
-        print(logname)
-        logdir = os.path.join('runs',logname)
-        logdir = os.path.join(logdir,os.listdir(logdir)[-1])
-        df=tflog2pandas(logdir)
-        #df=df[(df.metric != 'params/lr')&(df.metric != 'params/mm')&(df.metric != 'train/loss')] #delete the mentioned rows
-        df.to_excel(f"../../../data/{logname}.xlsx")
+    logdir = 'runs_randobs'
+    # if len(sys.argv) > 1:
+    #     logdir = sys.argv[1]
+
+    for logname in os.listdir(logdir):
+        subfolder = os.path.join(logdir,logname)
+        for i,logfile in enumerate(os.listdir(subfolder)):
+            logfile = os.path.join(subfolder,os.listdir(subfolder)[i])
+            print(logfile)
+            df=tflog2pandas(logfile)
+            #df=df[(df.metric != 'params/lr')&(df.metric != 'params/mm')&(df.metric != 'train/loss')] #delete the mentioned rows
+            df.to_excel(f"../../../data/randobs_{logname}{i}.xlsx")

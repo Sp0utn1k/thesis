@@ -40,7 +40,12 @@ def main():
 	runner = DQNRunner(env,agent,**settings)
 
 	timestr = time.strftime('%Y_%m_%d-%Hh%M')
-	writer = SummaryWriter(f'runs/{DQN_mode}{n_red}/'+timestr)
+	if settings['random_obstacles']:
+		writer = SummaryWriter(f'runs_randobs/{DQN_mode}{n_red}/'+timestr)
+	elif settings['random_ids']:
+		writer = SummaryWriter(f'runs_randid/{DQN_mode}{n_red}/'+timestr)
+	else:
+		writer = SummaryWriter(f'runs/{DQN_mode}{n_red}/'+timestr)
 	
 	for (episode,episode_length,reward,loss) in runner.run(settings['n_episodes'],render=settings.get('render',False)):
 		writer.add_scalar('reward',reward,episode)
@@ -53,17 +58,20 @@ def main():
 	for (episode,episode_length,reward,loss) in runner.run(100,render=False,train=False):
 		rewards.append(reward)
 
+	# filename = os.path.join('test_data',DQN_mode)
+	# if settings['random_ids']:
+	# 	filename += '_randid'
+	# with open(filename, 'a') as f:
+	# 	f.write(str(rewards))
+		# f.write('\n;\n')
 
-	filename = os.path.join('test_data',DQN_mode)
-	with open(filename, 'a') as f:
-		f.write(str(rewards))
-		f.write('\n\n')
-
-	# input('Press enter to show demo')
-	# for (episode,episode_length,reward,loss) in runner.run(10,render=True,train=False):
-	# 	print(f'Reward: {reward}')
+	input('Press enter to show demo')
+	for (episode,episode_length,reward,loss) in runner.run(5,render=True,train=False):
+		print(f'Reward: {reward}')
 
 
 
 if __name__ == "__main__":
-	cProfile.run('main()')
+	# cProfile.run('main()')
+	for _ in range(3):
+		main()

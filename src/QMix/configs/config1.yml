@@ -1,22 +1,23 @@
 batch_size : 128
 buffer_size : 100000
-net_sync_period : 100
+net_sync_period : 25
 n_episodes : 100000
-lr : 0.0003
+lr : 0.0005
 
 epsilon_decay: {'period': 100000,
 'start': 1,
-'stop': .01,
+'stop': .05,
 'shape': 'exponential'}
 
 gamma : .9
 use_gpu: True
-unique_net: True
-use_mixer: True
+unique_net: False
+use_mixer: False
 use_writer: True
 mixer_hidden_layer: 32
 optimizer: 'Adam'
 gamma: 0.9
 max_depth: 0 # 0 = no limit
+observation_mode: 'encoded'
 
 hidden_layers: [64,64] # Agents Q-Networks

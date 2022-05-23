@@ -8,6 +8,7 @@ import os
 import cv2 as cv
 from math import erf, sqrt
 import torch
+import random
 
 default = {'agents_description':[{'pos0':[0,0],'team': 'blue'},
 								{'pos0': [9,9],'team': 'red','policy': None}],
@@ -15,6 +16,7 @@ default = {'agents_description':[{'pos0':[0,0],'team': 'blue'},
 			'visibility':4,
 			'R50':3,
 			'obstacles':[],
+			'random_obstacles':0,
 			'borders_in_obstacles':False,
 			'add_graphics':True,
 			'N_aim':2,
@@ -25,7 +27,8 @@ default = {'agents_description':[{'pos0':[0,0],'team': 'blue'},
 			'im_size':480,
 			'observation_mode':'encoded',
 			'red_agent':None,
-			'red_observation_mode':'encoded'
+			'red_observation_mode':'raw',
+			'random_ids':False
 			}
 class Agent:
 	def __init__(self,team,id=0,policy='user'):
@@ -69,6 +72,16 @@ class Environment:
 		if kwargs.get('borders_in_obstacles',default['borders_in_obstacles']):
 			self.add_borders_to_obstacles()
 
+		self.random_obstacles = kwargs.get('random_obstacles',default['random_obstacles'])
+		not_free = []
+		if self.random_obstacles:
+			for d in self.agents_description:
+				if isinstance(d['pos0'],int):
+					not_free.append(d['pos0']) 
+			self.fixed_obstacles = copy.copy(self.obstacles)
+			self.no_obstacle_cells = [[x,y] for x in range(self.size[0]) for y in range(self.size[1])
+										 if [x,y] not in self.obstacles and [x,y] not in not_free]
+
 		if kwargs.get('add_graphics',default['add_graphics']):
 			self.graphics = Graphics(self,**kwargs)
 			self.show_plot = True
@@ -91,6 +104,7 @@ class Environment:
 		self.max_cycles = kwargs.get('max_cycles',default['max_cycles'])
 		self.remember_aim = kwargs.get('remember_aim',default['remember_aim'])
 		self.max_ammo = kwargs.get('ammo',default['ammo'])
+		self.random_ids = kwargs.get('random_ids',default['random_ids'])
 		self.reset()
 
 		self.obs_size = len(self.get_observation())
@@ -135,10 +149,17 @@ class Environment:
 			assert team in ['blue','red'], 'Team must be red or blue'
 			for _ in range(replicas):
 				agent = Agent(team,id=len(self.agents),policy=policy)
-				self.agents += [agent]
+				self.agents.append(agent)
 			if not pos0 == 'random':
 				assert replicas == 1, 'Cannot replicate agent with fixed position'
 				self.positions[agent] = pos0
+		if self.random_ids:
+			ids = np.random.permutation(len(self.agents))
+			agents = []
+			for i in range(len(ids)):
+				self.agents[i].id = ids[i]
+
+			self.agents.sort(key=lambda x:x.id)
 
 	def reset(self):
 		self.init_players()
@@ -148,6 +169,11 @@ class Environment:
 		self.ammo = {agent:self.max_ammo for agent in self.agents}
 		self.alive = {}
 		self.aim = {}
+
+		if self.random_obstacles:
+			rand_obstacles = random.sample(self.no_obstacle_cells,k=self.random_obstacles)
+			self.obstacles = self.fixed_obstacles + rand_obstacles
+
 		if self.red_agent:
 			self.red_hidden = self.red_agent.init_hidden()
 
@@ -359,7 +385,6 @@ class Environment:
 
 	def action(self,action):
 
-
 		agent = self.current_agent
 		if not self.is_valid_action(agent,action):
 			return False
@@ -394,7 +419,7 @@ class Environment:
 		hit = np.random.rand() < self.Phit(distance)
 		if hit:
 			self.alive[target] = False
-			self.positions[target] = [-1,-1]
+			self.positions[target] = [-10,-10]
 			return True
 		return False
 	
@@ -433,7 +458,7 @@ class Environment:
 		for agent in self.red_agents:
 			self.current_agent = agent
 			if agent.policy  == None:
-				continue
+				pass
 			elif agent.policy == 'random':
 				available_actions = [action for action in range(len(self.action_names)) 
 									if self.is_valid_action(agent,action)]
@@ -445,7 +470,7 @@ class Environment:
 					action, self.red_hidden = self.red_agent.get_action(state,self.red_hidden)
 				self.action(action)
 			else:
-				raise AttributeError(f'Policy "{agent.policy}"" is not supported for red agents.')
+				raise AttributeError(f'Policy "{agent.policy}" is not supported for red agents.')
 			self.cycle[agent] += 1
 
 		self.current_agent = prev_current
@@ -527,10 +552,6 @@ class Environment:
 		for pos in LOS:
 			if pos in self.obstacles:
 				return False
-		if not self.in_grid(pos1):
-			return False
-		if not self.in_grid(pos2):
-			return False
 		return True
 
 	def in_grid(self,pos):
@@ -736,17 +757,19 @@ def add(pos1,pos2):
 if __name__ == '__main__':
 
 	agents_description = [{'pos0':'random','team':'blue'},
-						{'pos0':'random','team':'blue'},
-						{'pos0':'random','team':'red'},
 						{'pos0':'random','team':'red'}
 						]
 
-	obstacles = [[x,y] for x in range(9,11) for y in range(2,18)]
-	env = Environment(agents_description=agents_description,size=[20,20],use_encoder=False,N_aim=4,im_size=720,
-						obstacles=obstacles,visibility = 12)
+	# obstacles = [[x,y] for x in range(4,6) for y in range(2,8)]
+	obstacles = []
+	random_obstacles = 10
+
+	env = Environment(agents_description=agents_description,size=[10,10],observation_mode='raw',N_aim=4,im_size=720,
+						obstacles=obstacles,visibility = 12,random_obstacles=random_obstacles)
 	images_folder = os.path.abspath('../../images')
-	env.render(twait=0,save_image=True,filename = os.path.join(images_folder,'env_render.png'))
+
+	env.render(twait=0,save_image=True,filename = os.path.join(images_folder,'randobs_setup1.png'))
 	
 	# env.agents_description[0]['pos0'] = 'random'
 	# env.reset()
-	env.render_fpv(0,twait=0,save_image=True,filename = os.path.join(images_folder,'env_render_fpv.png'))
+	# env.render_fpv(0,twait=0,save_image=True,filename = os.path.join(images_folder,'env_render_fpv.png'))
