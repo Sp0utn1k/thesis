@@ -63,6 +63,8 @@ class Environment:
 		if self.observation_mode == 'encoded' or self.red_observation_mode == 'encoded':
 			self.load_encoders()
 
+		print(f'Observation_mode: {self.observation_mode}')
+
 		self.agents_description = kwargs.get('agents_description',default['agents_description'])
 		self.size  = kwargs.get('size',default['size'])
 		self.visibility = kwargs.get('visibility',default['visibility'])

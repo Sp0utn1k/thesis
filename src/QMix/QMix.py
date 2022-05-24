@@ -39,7 +39,7 @@ def main():
 	else:
 		writer_name += '_FC'
 
-	if config['observation_mode'] == 'encoded':
+	if env_params['observation_mode'] == 'encoded':
 		writer_name += '_encoder'
 
 	use_writer = config.get('use_writer',False)

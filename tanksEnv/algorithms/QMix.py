@@ -110,11 +110,11 @@ class QMixRunner:
 				buffer.pop()
 				# agents_buffers_test[agent].pop()
 				last_trans = buffer[-1]
-				last_trans.done = 1
+				# last_trans.done = 1
 				for _ in range(episode_length-episode_lengths[agent]):
 					buffer.append(last_trans)
 					# agents_buffers_test[agent].append(empty_trans_test)
-				buffer[-1] = last_trans
+				# buffer[-1] = last_trans
 
 			# print('\n'*3,qmix_buffer_test)
 			# for agent,buffer_test in agents_buffers_test.items():

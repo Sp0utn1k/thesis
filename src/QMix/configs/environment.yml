@@ -9,4 +9,5 @@ obstacles: []
 N_aim: 5
 max_cycles: 25
 ammo: 5
-random_ids: True
+random_ids: False
+observation_mode: 'encoded'

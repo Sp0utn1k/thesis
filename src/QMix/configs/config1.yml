@@ -11,13 +11,12 @@ epsilon_decay: {'period': 100000,
 
 gamma : .9
 use_gpu: True
-unique_net: False
-use_mixer: False
+unique_net: True
+use_mixer: True
 use_writer: True
-mixer_hidden_layer: 32
+mixer_hidden_layer: 64
 optimizer: 'Adam'
 gamma: 0.9
 max_depth: 0 # 0 = no limit
-observation_mode: 'encoded'
 
 hidden_layers: [64,64] # Agents Q-Networks
